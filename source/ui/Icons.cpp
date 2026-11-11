@@ -372,6 +372,17 @@ namespace Icons
                 break;
             }
 
+            case Type::turntable:
+            {
+                // A record on its platter, the spindle, and the arm resting on the record from the top right.
+                p.addEllipse (0.04f, 0.1f, 0.78f, 0.78f);
+                p.addEllipse (0.34f, 0.4f, 0.18f, 0.18f);
+                p.startNewSubPath (0.9f, 0.08f);
+                p.lineTo (0.9f, 0.5f);
+                p.lineTo (0.66f, 0.72f);
+                break;
+            }
+
             case Type::flame:
                 // The mockup's "All Rigs" icon.
                 p.startNewSubPath (0.5f, 0.05f);

@@ -516,6 +516,23 @@ namespace ParamIDs
     inline constexpr auto bloomSwell     = "bloomSwell";       // 0 to 1: the hall opening, 0.15 to 4 s
     inline constexpr auto bloomTone      = "bloomTone";        // 0 to 1: 1.5 to 15 kHz
     inline constexpr auto bloomWidth     = "bloomWidth";       // 0 to 1
+    // THE DECK (PR7-T 0.2.0, version hint 44, deck::Deck, DeckParameters.cpp): the turntable. Off by default, so the
+    // synth's presets and projects play exactly as before; on, its 12 keys and the pitch wheel are the deck's.
+    inline constexpr auto deckOn       = "deckOn";
+    inline constexpr auto deckKeys     = "deckKeys";       // choice: the 12 keys' octave, deckKeyNames (index i: from note 12 (i + 1))
+    inline constexpr auto deckPitch    = "deckPitch";      // -16 to +16 %: the pitch fader
+    inline constexpr auto deckSpeed    = "deckSpeed";      // choice: 33, 45 RPM
+    inline constexpr auto deckStart    = "deckStart";      // s: the motor from standstill to full speed
+    inline constexpr auto deckBrake    = "deckBrake";      // s: STOP's slowing, full speed to standstill
+    inline constexpr auto deckSpin     = "deckSpin";       // times normal speed: BACKSPIN's throw
+    inline constexpr auto deckSpinTime = "deckSpinTime";   // s: BACKSPIN's slowing to a stop
+    inline constexpr auto deckReach    = "deckReach";      // turns: how far the pitch wheel moves the record
+    inline constexpr auto deckNeedle   = "deckNeedle";     // 0 to 1: the needle drop's thump and crackle
+    inline constexpr auto deckLevel    = "deckLevel";      // dB (-60: off)
+    inline constexpr const char* deckCues[] = { "deckCue1", "deckCue2", "deckCue3", "deckCue4" };   // 0 to 1 of the record: DROP 1-4
+    inline const juce::StringArray deckKeyNames { "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7" };   // by index: only append
+    inline constexpr int deckKeysDefault = 1;   // C1 (note 24), the on-screen keyboard's lowest octave
+    inline const juce::StringArray deckSpeedNames { "33", "45" };
 
     // THE INSERT BUSES (stage 7d, version hint 19): A to D, each "ins1"... "ins4" plus a setting below: PR7-G's
     // DRIVE and GLITCH (their IDs after the prefix, capitalised), then MOD and LO-FI as above, then the bus's SENDS.
@@ -607,4 +624,5 @@ void addLeviathanParameters (juce::AudioProcessorValueTreeState::ParameterLayout
 void addNuclearSpringParameters (juce::AudioProcessorValueTreeState::ParameterLayout&);   // RackParameters.cpp (0.69.0)
 void addLightSpeedParameters (juce::AudioProcessorValueTreeState::ParameterLayout&);   // RackParameters.cpp (0.73.0)
 void addBloomParameters (juce::AudioProcessorValueTreeState::ParameterLayout&);        // RackParameters.cpp (0.74.0)
+void addDeckParameters (juce::AudioProcessorValueTreeState::ParameterLayout&);         // DeckParameters.cpp (PR7-T 0.2.0)
    // RackParameters.cpp (0.53.0)   // RackParameters.cpp (stage 7d)

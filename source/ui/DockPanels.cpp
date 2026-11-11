@@ -209,8 +209,8 @@ void SettingsPage::paint (juce::Graphics& g)
                                  "SAVE AS DEFAULT for every new PR7-T."));
     section (aboutArea, "ABOUT",
              juce::String ("Paragon PR7-T v") + JucePlugin_VersionString
-                 + ". The PR7 family's turntable instrument (its deck to come), with PR7-K's synthesizer and effects "
-                   "(our own design and code). "
+                 + ". The PR7 family's turntable instrument: decks to scratch, spin back and stop, as nu-metal's DJs played them, "
+                   "with PR7-K's synthesizer and effects (our own design and code). "
                    "Free and open source under the GNU AGPLv3.\n"
                    "Built with JUCE (AGPLv3) and the Inter typeface (SIL OFL). "
                    "The piano presets play the Salamander Grand Piano by Alexander Holm (CC-BY 3.0), "

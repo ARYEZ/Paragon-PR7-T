@@ -10,6 +10,7 @@
 #include "Parameters.h"
 #include "Rack.h"
 #include "dsp/synth/Engine.h"
+#include "dsp/deck/Deck.h"
 #include "dsp/synth/Freeform.h"
 #include "dsp/synth/Spectrum.h"
 #include "dsp/synth/Wavetable.h"
@@ -36,7 +37,7 @@ struct CurrentRig
 };
 
 // PR7-T: an instrument. MIDI in (from the DAW and the on-screen keyboard),
-// the synth engine, the preset's level and OUTPUT, stereo out.
+// the synth engine and THE DECK (the turntable), the preset's level and OUTPUT, stereo out.
 class ParagonX1AudioProcessor final : public juce::AudioProcessor,
                                       private juce::Timer,
                                       private juce::AudioProcessorValueTreeState::Listener,
@@ -253,6 +254,7 @@ public:
         rack->loFi.seedRandom (seed);
         rack->delay.seedRandom (seed);
         rack->crackle.seedRandom ((std::uint32_t) seed);
+        deck.seedRandom (seed);
         rack->downpour.seedRandom ((std::uint32_t) seed);
         rack->infernal.seedRandom ((std::uint32_t) seed);
         rack->blackHole.seedRandom ((std::uint32_t) seed);
@@ -350,6 +352,19 @@ public:
     // CRACKLE (0.56.0): its settings as they are now (RATE, CLUSTER, LEVEL as the matrix moves them), and the counter.
     effects::Crackle::Settings getCrackleSettings() const noexcept;
     const effects::Crackle& getCrackle() const noexcept { return rack->crackle; }
+    // THE DECK (PR7-T 0.2.0): the turntable. Its settings as the parameters have them; where its needle is and how
+    // fast it turns (for the page); the record on it (message thread). A record is a sample loaded from a file
+    // (WAV, AIFF, FLAC, Ogg; up to 3 minutes), or THE HOUSE RECORD, our own, built in.
+    deck::Settings getDeckSettings() const noexcept;
+    const deck::Deck& getDeck() const noexcept { return deck; }
+    std::shared_ptr<const deck::Record> getDeckRecord() const { return deckRecord; }
+    bool loadDeckRecord (const juce::File&);   // false: it couldn't be read (getDeckRecordProblem says why); the record stays
+    void useHouseRecord();
+    juce::String getDeckRecordFile() const { return deckRecordFile; }   // empty: THE HOUSE RECORD
+    juce::String getDeckRecordProblem() const { return deckRecordProblem; }
+    static constexpr double deckRecordMaxSeconds = 180.0;
+    // The page's hand on the platter: while holding, how far it has turned the record since it took hold.
+    void setDeckMouseHand (bool holding, float turns) noexcept { deck.setMouseHand (holding, turns); }
     // DOWNPOUR (0.57.0): its settings as they are now (RAIN, DROPS, DISTANCE, LEVEL as the matrix moves them), and the rain.
     effects::Downpour::Settings getDownpourSettings() const noexcept;
     const effects::Downpour& getDownpour() const noexcept { return rack->downpour; }
@@ -573,6 +588,16 @@ private:
     synth::Engine engine;
     juce::MidiKeyboardState keyboardState;
     juce::MidiBuffer keyboardMidi;   // the DAW's MIDI plus the on-screen keyboard's, per block
+    // THE DECK: the turntable, and its share of the MIDI (its 12 keys and the pitch wheel, taken from the synth's
+    // while it's on). Its record handed to the audio thread as the MIMIC recording is: a plain pointer, a replaced
+    // one kept 2 s so a block still playing it never reads freed memory.
+    deck::Deck deck;
+    juce::MidiBuffer deckMidi, synthMidi;   // (synthMidi: what's left for the synth, swapped back in)
+    std::shared_ptr<const deck::Record> deckRecord;
+    std::atomic<const deck::Record*> deckRecordForAudio { nullptr };
+    std::vector<std::pair<std::shared_ptr<const deck::Record>, double>> retiredDeckRecords;
+    juce::String deckRecordFile, deckRecordProblem;
+    void setDeckRecord (std::shared_ptr<const deck::Record>);
     std::atomic<int> activeVoices { 0 };
 
     // Smoothing stops zipper noise when OUTPUT or the preset's level moves.

@@ -12,6 +12,7 @@
 #include "ui/ModPage.h"
 #include "ui/ArpPage.h"
 #include "ui/FxPage.h"
+#include "ui/DeckPage.h"
 #include "ui/ModSourceStrip.h"
 #include "ui/SynthPanels.h"
 #include "ui/SynthFace.h"
@@ -56,7 +57,7 @@ public:
     static constexpr int width = 1600;
     static constexpr int height = 900;
 
-    enum class Page { synth, presets, settings, modulation, arp, fx };
+    enum class Page { synth, presets, settings, modulation, arp, fx, deck };
     void showPage (Page);
 
     // For snapshots and tests: the oscillator tabs.
@@ -68,6 +69,7 @@ public:
     ModPage& getModPage() noexcept { return modPage; }
     ArpPage& getArpPage() noexcept { return arpPage; }
     FxPage& getFxPage() noexcept { return fxPage; }
+    DeckPage& getDeckPage() noexcept { return deckPage; }
     ModSourceStrip& getSourceStrip() noexcept { return sources; }
     SettingsPage& getSettingsPage() noexcept { return settingsPage; }
 
@@ -107,6 +109,7 @@ private:
                modTab { "Modulation: LFOs, macros and the mod matrix", Icons::Type::modulation, "MOD" },
                arpTab { "The arpeggiators", Icons::Type::arpeggio, "ARP" },
                fxTab { "The rack: ECHELON, DOMINION, CONSTRICTOR and the LIMITER after the synth", Icons::Type::rack, "FX" },
+               deckTab { "THE DECK: the turntable, to scratch, hold, spin back and drop", Icons::Type::turntable, "DECK" },
                presetsTab { "Browse, save and organise presets", Icons::Type::presets, "PRESETS" },
                settingsTab { "Tuning and other settings", Icons::Type::settings, "SETTINGS" };
     IconButton previousRig { "Previous preset", Icons::Type::chevronLeft }, nextRig { "Next preset", Icons::Type::chevronRight };
@@ -140,6 +143,7 @@ private:
     ModPage modPage;
     ArpPage arpPage;
     FxPage fxPage;
+    DeckPage deckPage;
     RigBrowser rigBrowser;
     SettingsPage settingsPage;
     Page page = Page::synth;

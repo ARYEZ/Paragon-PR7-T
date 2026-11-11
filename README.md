@@ -3,8 +3,8 @@
 [![Build](https://github.com/ARYEZ/Paragon-PR7-T/actions/workflows/build.yml/badge.svg)](https://github.com/ARYEZ/Paragon-PR7-T/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/ARYEZ/Paragon-PR7-T)](https://github.com/ARYEZ/Paragon-PR7-T/releases/latest)
 
-The turntable instrument of the Paragon PR7 family: a VST3 instrument with (from 0.2.0) a deck to scratch, hold, spin
-back, stop and drop the needle on, as the DJs of nu-metal bands played theirs, with PR7-K's synthesizer and effects.
+The turntable instrument of the Paragon PR7 family: a VST3 instrument with a deck to scratch, hold, spin back, stop
+and drop the needle on, as the DJs of nu-metal bands played theirs, with PR7-K's synthesizer and effects beside it.
 Our own design and code, built with [JUCE](https://juce.com).
 
 Paragon PR7-T starts from [Paragon PR7-K](https://github.com/ARYEZ/Paragon-PR7-K) 0.74.1, the family's synthesizer,
@@ -21,16 +21,36 @@ PR7-T is built in stages, each one released:
 | Stage | What | Now |
 |---|---|---|
 | **1** | Its own plugin: PR7-K 0.74.1 as "Paragon PR7-T", installing beside the others | **Works (0.1.0)** |
-| 2 | The deck engine: a record played at whatever speed and direction the motor and your hand give it (backwards too), the motor's start and brake, BACKSPIN, HOLD, needle drops to four cues, the pitch wheel as your hand; clean at any speed | Next |
+| **2** | **The deck engine**: a record played at whatever speed and direction the motor and your hand give it (backwards too), the motor's start and brake, BACKSPIN, HOLD, needle drops to four cues, the pitch wheel as your hand; clean at any speed | **Works (0.2.0)** |
 | 3 | The crossfader: its cut curve, reverse ("hamster"), clicks | Planned |
 | 4 | The scratch library: baby, chirp, transformer, flare, crab, tear... as hand-and-fader moves, synced to tempo, played from keys | Planned |
-| 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | Planned |
+| 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | Planned (0.2.0 has a simple platter to drag) |
 | 6 | The sound: cartridge and mixer EQ, the mixer's filter and kill switches, lo-fi (with PR7-K's CRACKLE) | Planned |
 
 ## Using it
 
-For now PR7-T is PR7-K 0.74.1 under its own name: its SYNTH, MOD, ARP, FX, PRESETS and SETTINGS pages, unchanged. See
-[PR7-K's README](https://github.com/ARYEZ/Paragon-PR7-K#using-it). THE DECK comes in 0.2.0.
+- **DECK** (the tab beside SYNTH): the turntable.
+  - **ON**: the deck's on or off. **Off by default**, so every preset plays as it does on PR7-K. On, the deck's 12
+    keys (**KEYS**, from C1 by default, the on-screen keyboard's lowest octave) and the **pitch wheel** are the deck's
+    and not the synth's.
+  - **The keys**: **PLAY** (C) starts the motor, **STOP** (C#) stops it, **BACKSPIN** (D) throws the record back,
+    **HOLD** (D#, while held) is a hand holding the record still, **DROP 1-4** (E, F, G, A) drop the needle at
+    **CUE 1-4**, the motor on. The same keys are on the page as buttons.
+  - **Your hand**: the **pitch wheel** moves the record, forwards up and backwards down, as far as **REACH** (in turns
+    of the platter; a turn is 1.8 seconds of the record). Let the wheel spring back and the record comes back with
+    it: a baby scratch. Left at its centre a moment, the hand lets go and the motor takes the record again. Or grab
+    the **platter** on the page with the mouse and drag round it.
+  - **The record**: **LOAD RECORD...** puts a sample on (WAV, AIFF, FLAC or Ogg, up to 3 minutes; the project
+    remembers it). **HOUSE RECORD** is ours, built in: an "ahh", a horn stab, a drum break and a 1 kHz tone, two
+    seconds apart, where the four cues start. The strip shows the record, the needle's place and the cues.
+  - **The knobs**: **PITCH** (the pitch fader, +-16%), **RPM** (33 or 45), **START** and **BRAKE** (the motor up to
+    speed and down to a stop; a long BRAKE is a tape stop), **SPIN** and **SPIN TIME** (BACKSPIN's throw and how long
+    it takes to stop), **REACH**, **NEEDLE** (the drop's thump and crackle), **CUE 1-4**, **LEVEL**.
+  - The deck goes through everything the synth does after it: the rack (FX), OUTPUT and the LIMITER.
+  - Like a real turntable, the record's loudness follows its speed: a slow drag is quiet, a fast scratch loud (up to
+    +6 dB), a record held still silent.
+- **SYNTH, MOD, ARP, FX, PRESETS, SETTINGS**: PR7-K's, unchanged. See
+  [PR7-K's README](https://github.com/ARYEZ/Paragon-PR7-K#using-it).
 
 ## Download
 
@@ -70,7 +90,7 @@ The plugin is written to `build/ParagonX1_artefacts/Release/VST3/` (the build ta
 
 On Linux, install JUCE's dependencies first (the list is in `.github/workflows/build.yml`).
 
-To render the editor to an image without a DAW:
+To render the editor to an image without a DAW (`PARAGON_SNAPSHOT_PAGE=deck` for THE DECK):
 
 ```bash
 PARAGON_SNAPSHOT=editor.png ./build/tests/ParagonX1Tests "[snapshot]"

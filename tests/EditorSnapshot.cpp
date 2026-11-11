@@ -31,6 +31,7 @@
 //                                    on by itself for OSC, OSCPAGE, FILTERPAGE, FFT and TRAVEL. Otherwise the front panel.
 //   PARAGON_SNAPSHOT_FFT=band:dB,...  a curve drawn for oscillator 1; PARAGON_SNAPSHOT_FFT_VIEW=harmonic|bins
 //   PARAGON_SNAPSHOT_PARAMS=id=value,...   parameters set (real units)
+//   PARAGON_SNAPSHOT_PAGE=deck       THE DECK (PR7-T 0.2.0), on, THE HOUSE RECORD playing from CUE 3
 //   PARAGON_SNAPSHOT_PAGE=fx         THE RACK (PARAGON_SNAPSHOT_RACK=1: at work on a chord, the sends too; PARAGON_SNAPSHOT_FX=eq|dominion|comp|limiter|sends|delay|reverb|modfx|mod|mod2|lofi|inserts|insdrive|insglitch|insmod|inslofi: that view, the inserts' on bus PARAGON_SNAPSHOT_BUS=1-4)
 //   PARAGON_SNAPSHOT_LIBRARIES=<folder>  the sample libraries (the Salamander's folder in it) for the piano presets
 //   PARAGON_SNAPSHOT_SFZ=<file>      oscillator 1 playing that SFZ instrument (the rack shown, its key map)
@@ -339,6 +340,24 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
         view->getOscillatorPanel().showPage (OscillatorPanel::Page::fft);
     if (env ("PARAGON_SNAPSHOT_PAGE") == "mod")
         view->showPage (MainView::Page::modulation);
+    if (env ("PARAGON_SNAPSHOT_PAGE") == "deck")
+    {
+        // THE DECK (PR7-T 0.2.0): on, THE HOUSE RECORD dropped at CUE 3 (the break) and played a moment, so the
+        // platter has turned, the arm moved in and the needle shows on the strip.
+        view->showPage (MainView::Page::deck);
+        for (const auto* id : { ParamIDs::deckOn })
+            processor.getParameters().getParameter (id)->setValueNotifyingHost (1.0f);
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 24 + (int) deck::Key::drop3, 1.0f), 0);
+        midi.addEvent (juce::MidiMessage::noteOff (1, 24 + (int) deck::Key::drop3), 64);
+        for (int block = 0; block < 200; ++block)
+        {
+            processor.processBlock (buffer, midi);
+            midi.clear();
+        }
+        view->getDeckPage().refreshForTest();   // what the page's timers do: read where the record is
+    }
     if (env ("PARAGON_SNAPSHOT_PAGE") == "arp")
     {
         // ARP 1 on, oscillators 1 and 2 routed to it, with a pattern that shows every kind of block.

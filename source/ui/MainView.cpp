@@ -95,11 +95,12 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
       modPage (processorToShow),
       arpPage (processorToShow),
       fxPage (processorToShow),
+      deckPage (processorToShow),
       rigBrowser (processorToShow),
       settingsPage (processorToShow)
 {
     // Header
-    for (auto* tab : { &synthTab, &modTab, &arpTab, &fxTab, &presetsTab, &settingsTab })
+    for (auto* tab : { &synthTab, &deckTab, &modTab, &arpTab, &fxTab, &presetsTab, &settingsTab })
     {
         tab->setClickingTogglesState (true);
         tab->setRadioGroupId (100);
@@ -116,6 +117,8 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     arpTab.onClick = [this] { showPage (Page::arp); };
     fxTab.setComponentID ("fxTab");
     fxTab.onClick = [this] { showPage (Page::fx); };
+    deckTab.setComponentID ("deckTab");
+    deckTab.onClick = [this] { showPage (Page::deck); };
     presetsTab.onClick = [this] { showPage (Page::presets); };
     settingsTab.onClick = [this] { showPage (Page::settings); };
 
@@ -174,6 +177,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     addChildComponent (modPage);
     addChildComponent (arpPage);
     addChildComponent (fxPage);
+    addChildComponent (deckPage);
     addChildComponent (rigBrowser);
     addChildComponent (settingsPage);
 
@@ -195,7 +199,7 @@ void MainView::showPage (Page newPage)
 {
     page = newPage;
     auto& tab = newPage == Page::presets ? presetsTab : newPage == Page::settings ? settingsTab : newPage == Page::modulation ? modTab
-              : newPage == Page::arp ? arpTab : newPage == Page::fx ? fxTab : synthTab;
+              : newPage == Page::arp ? arpTab : newPage == Page::fx ? fxTab : newPage == Page::deck ? deckTab : synthTab;
     tab.setToggleState (true, juce::dontSendNotification);
     for (auto* component : synthPage)
         component->setVisible (newPage == Page::synth);
@@ -206,6 +210,7 @@ void MainView::showPage (Page newPage)
     modPage.setVisible (newPage == Page::modulation);
     arpPage.setVisible (newPage == Page::arp);
     fxPage.setVisible (newPage == Page::fx);
+    deckPage.setVisible (newPage == Page::deck);
     rigBrowser.setVisible (newPage == Page::presets);
     settingsPage.setVisible (newPage == Page::settings);
 }
@@ -479,7 +484,7 @@ void MainView::paint (juce::Graphics& g)
         g.setColour (ParagonColours::panelEdge);
         g.drawRoundedRectangle (group.reduced (0.5f), 5.0f, 1.0f);
     }
-    for (auto x : { 450.0f, 563.0f, 685.0f, 807.0f, 946.0f })
+    for (auto x : { 435.0f, 533.0f, 631.0f, 729.0f, 827.0f, 956.5f })   // between the tabs (see resized)
         g.drawVerticalLine (juce::roundToInt (x * mockScale), tabsGroup.getY() + 8.0f, tabsGroup.getBottom() - 8.0f);
 
     g.setColour (ParagonColours::panelEdge);
@@ -492,12 +497,18 @@ void MainView::paint (juce::Graphics& g)
 void MainView::resized()
 {
     // Header
-    synthTab.setBounds (mock (338, 12, 449, 53));
-    modTab.setBounds (mock (451, 12, 562, 53));
-    arpTab.setBounds (mock (564, 12, 684, 53));
-    fxTab.setBounds (mock (686, 12, 806, 53));
-    presetsTab.setBounds (mock (808, 12, 945, 53));
-    settingsTab.setBounds (mock (947, 12, 1085, 53));
+    // Seven tabs (PR7-T 0.2.0: DECK beside SYNTH) in the same group: the five short names narrower, PRESETS and
+    // SETTINGS wider so their names fit.
+    {
+        IconButton* tabs[] = { &synthTab, &deckTab, &modTab, &arpTab, &fxTab, &presetsTab, &settingsTab };
+        auto left = 338.0f;
+        for (int i = 0; i < 7; ++i)
+        {
+            const auto w = i < 5 ? 96.0f : 127.5f;
+            tabs[i]->setBounds (mock (left, 12, left + w, 53));
+            left += w + 2.0f;
+        }
+    }
     previousRig.setBounds (mock (1110, 14, 1150, 51));
     nextRig.setBounds (mock (1351, 14, 1391, 51));
     rigNameButton.setBounds (mock (1152, 14, 1349, 51));
@@ -528,6 +539,7 @@ void MainView::resized()
     modPage.setBounds (pageArea);
     arpPage.setBounds (pageArea);
     fxPage.setBounds (pageArea);
+    deckPage.setBounds (pageArea);
     rigBrowser.setBounds (pageArea);
     settingsPage.setBounds (pageArea);
 }
