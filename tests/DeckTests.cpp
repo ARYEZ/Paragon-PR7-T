@@ -1130,7 +1130,9 @@ TEST_CASE ("THE SOUND's WEAR: surface noise while the record moves (louder faste
     CHECK (noise (1.0f, false, false) < 1.0e-6);   // still: nothing in the groove passing the needle
     CHECK_THAT (db (noise (1.0f, true, true) / worn), WithinAbs (db (1.35), 1.0));   // 45 RPM: 1.35 times the speed
 
-    // The warp: a 1 kHz tone's pitch wobbling once a turn, about 0.4% either way (none on a new record).
+    // The warp: the record's speed wobbling once a turn, about 0.4% either way (none on a new record). Measured from how
+    // fast the needle goes through the record, a tenth of a second at a time (the tone's zero crossings would count
+    // the crackle too).
     const auto wobble = [] (float wear)
     {
         Turntable t (sineRecord (1000.0, 8.0));
@@ -1139,20 +1141,23 @@ TEST_CASE ("THE SOUND's WEAR: surface noise while the record moves (louder faste
         t.key (deck::Key::play);
         t.play (0.3);
         double lowest = 1.0e9, highest = 0.0;
-        for (int k = 0; k < 36; ++k)   // two turns, a tenth of a second at a time
+        auto was = t.deck.getPositionSeconds();
+        for (int k = 0; k < 36; ++k)   // two turns
         {
-            const auto from = t.play (0.1);
-            const auto hz = frequencyOf (t.out, from, t.out.size());
-            lowest = juce::jmin (lowest, hz);
-            highest = juce::jmax (highest, hz);
+            t.play (0.1);
+            const auto now = t.deck.getPositionSeconds();
+            const auto rate = (now - was) / (19.0 * blockSize / sampleRate);   // (0.1 s is 19 blocks)
+            was = now;
+            lowest = juce::jmin (lowest, rate);
+            highest = juce::jmax (highest, rate);
         }
         return highest - lowest;
     };
-    CHECK (wobble (0.0f) < 0.5);
+    CHECK (wobble (0.0f) < 1.0e-6);
     const auto spread = wobble (1.0f);
-    INFO ("the pitch's spread at full wear: " << spread << " Hz");
-    CHECK (spread > 5.0);
-    CHECK (spread < 9.0);
+    INFO ("the speed's spread at full wear: " << spread);
+    CHECK (spread > 0.005);   // +-0.4%: 0.008 at most (a tenth of a second's average a little less)
+    CHECK (spread < 0.0085);
 }
 
 TEST_CASE ("THE SOUND's KILL switched on mid-note: a quick ramp, not a click", "[deck][sound]")
