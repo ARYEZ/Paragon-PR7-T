@@ -140,6 +140,14 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   `DeckPage::sets[2]` (each deck's rack controls, ON key), shown by `selected` (`selectDeck`: the rack's A / B keys,
   `deckKeyCell`, or `DeckPlatter::onGrab`); shared `faderControls` and `handControls` (MOD HAND, HAND on SCRATCH's
   `knobCell` 2-3). `DeckRack::underScreenCell` puts five keys under the screen (A, B, ON, LOAD, HOUSE).
+- **The mixer in the Tron look (0.9.1;** the owner: "can you give the graphics between the decks the Tron style
+  treatment too?"**):** drawn in `DeckPage.cpp`'s `tron` namespace from `turntable3d.py`'s recipe, not rendered:
+  `tron::at` / `across` (ff2d6e, ff2a2e, ff6a24 left to right: the renders' swatch, not `Finish::neonGradient`'s
+  darker rack one), `tube` (a neon line: three glow widths, the tube, a white-hot core), `gloss`, `tron::Key` (the ten
+  keys: neon edge by `t`, their place). `DeckPage::paint`: the floor (0xff161212, the pictures' edge measured), a red
+  glow round `mixerPlinth`, the grid (c0102c at 32%, every `DeckPlatter::gridStep` 49.95 picture px, rows from
+  `gridFirstRow` 39.6: measured from deck.jpg), the plinth with its neon edge. `resized` moves DECK B left by the grid's
+  remainder so its picture's grid lines up with A's, and centres the mixer's parts in the height left.
 - Tests: `[twodecks]` (B's keys play B, A's A, both twice as loud, B off gives its keys back; the fader's ends and
   middle, B's CUT only B, a tap from the cut end; HAND; B's record with the project and in presets, the old project's
   and old preset's fader turned round, deck A heard; the page's two turntables, grabbing B shows and plays B).

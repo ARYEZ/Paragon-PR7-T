@@ -31,7 +31,9 @@ public:
     // Where the record is on the component (the picture fitted and centred in it), for the hand and for tests.
     juce::Point<float> getPlatterCentre() const;
     float getRecordRadius() const;
-    float getArmAngle() const noexcept { return armAngle; }   // radians the arm has swung in from the record's start
+    float getArmAngle() const noexcept { return armAngle; }
+    juce::Rectangle<float> getPictureArea() const { return pictureArea(); }   // the picture, fitted, in this component
+    static constexpr float gridStep = 49.95f, gridFirstRow = 39.6f;          // its floor's grid, in the picture's pixels   // radians the arm has swung in from the record's start
     static constexpr float pictureAspect = 1400.0f / 1080.0f;
     static std::vector<juce::Image> picturesForTest();   // the deck, lit, the platter, the arm
     std::function<void()> onGrab;                         // the hand took this deck's record (the page shows it on the rack)
@@ -138,6 +140,7 @@ private:
     std::vector<KeyButton> keys;
     juce::TextButton rackButton;
     bool rackShown = true;
+    juce::Rectangle<int> mixerPlinth;   // 0.9.1: the mixer's body between the turntables (painted, Tron)
     juce::Label speedLabel, speedLabelB, keysLabel;
     std::unique_ptr<juce::FileChooser> chooser;
 };

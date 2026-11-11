@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.1
+
+**The mixer between the decks in the turntables' Tron look.**
+
+0.9.0's mixer between the two turntables was in the plain style of the rest of the window. Now it matches the
+turntables, drawn from the same recipe their 3D renders use (gloss black, a neon edge running pink to red to
+orange from left to right, glowing on a black floor with a faint red grid):
+
+- **The floor runs on under the mixer:** the red grid continues between the turntables, lined up with the grid in
+  their pictures, so the two decks and the mixer stand on one table. (DECK B moves in a few pixels at most so its
+  grid lines up too.)
+- **The mixer:** a gloss black body with a neon edge, pink at the left to orange at the right, glowing on the floor.
+- **The record strips:** black screens with thin neon edges; the sound drawn in the neon's colours (dim where the
+  needle has played), the needle a glowing line with a white-hot middle.
+- **The keys:** gloss black with neon edges, each in its place's colour; they light up while held.
+- **The crossfader:** its slot a neon tube, each side as bright as the deck at that end is heard (so you see a cut);
+  the cap black with a white-hot line; DECK A and DECK B in their ends' colours.
+- With the rack hidden, the mixer's parts stay together, centred between the turntables.
+
+Only the look changed; nothing about the sound.
+
 ## 0.9.0
 
 **THE SECOND DECK: two turntables and a real A/B crossfader.**

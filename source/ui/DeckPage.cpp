@@ -26,6 +26,84 @@ namespace
 }
 
 //==============================================================================
+// THE MIXER between the turntables in their "Tron" look (0.9.1, the owner: "give the graphics between the decks the
+// Tron style treatment too"): drawn, not rendered, from the turntables' own recipe (resources/deck/turntable3d.py):
+// gloss black, a neon edge running pink (ff2d6e) to red (ff2a2e) to orange (ff6a24) from left to right, glowing on
+// a black floor with a faint red grid (c0102c, a line every 20 mm, lined up with the one in the turntables' pictures).
+namespace tron
+{
+    const juce::Colour pink { 0xffff2d6e }, red { 0xffff2a2e }, orange { 0xffff6a24 }, grid { 0xffc0102c };
+
+    juce::Colour at (float t)   // the neon at `t` (0: the left, 1: the right)
+    {
+        t = juce::jlimit (0.0f, 1.0f, t);
+        return t < 0.5f ? pink.interpolatedWith (red, t * 2.0f) : red.interpolatedWith (orange, t * 2.0f - 1.0f);
+    }
+
+    juce::ColourGradient across (float left, float right, float alpha = 1.0f)
+    {
+        juce::ColourGradient gradient (pink.withMultipliedAlpha (alpha), left, 0.0f, orange.withMultipliedAlpha (alpha), right, 0.0f, false);
+        gradient.addColour (0.5, red.withMultipliedAlpha (alpha));
+        return gradient;
+    }
+
+    // A neon tube along `path`: wide faint glow, narrower brighter, the tube, a white-hot core.
+    void tube (juce::Graphics& g, const juce::Path& path, float left, float right, float width, float glow = 1.0f)
+    {
+        const std::pair<float, float> layers[] = { { 7.0f, 0.05f }, { 4.0f, 0.10f }, { 2.2f, 0.28f } };
+        for (const auto& [w, alpha] : layers)
+        {
+            g.setGradientFill (across (left, right, alpha * glow));
+            g.strokePath (path, juce::PathStrokeType (width * w, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        g.setGradientFill (across (left, right));
+        g.strokePath (path, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (juce::Colour (0xffffe6ea).withAlpha (0.55f * glow));
+        g.strokePath (path, juce::PathStrokeType (width * 0.35f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    // Gloss black: dark, a little lighter at the top, a faint sheen along its top edge.
+    void gloss (juce::Graphics& g, juce::Rectangle<float> area, float radius)
+    {
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff140b0f), 0.0f, area.getY(), juce::Colour (0xff050304), 0.0f, area.getBottom(), false));
+        g.fillRoundedRectangle (area, radius);
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.fillRoundedRectangle (area.reduced (radius * 0.6f, 1.5f).withHeight (2.0f), 1.0f);
+    }
+
+    // A key on the mixer: gloss black, its edge neon in its place's colour (`t`), lit inside while it's down.
+    class Key final : public juce::TextButton
+    {
+    public:
+        explicit Key (const juce::String& name) : juce::TextButton (name) {}
+        float t = 0.5f;
+
+        void paintButton (juce::Graphics& g, bool over, bool down) override
+        {
+            const auto bounds = getLocalBounds().toFloat().reduced (3.0f);
+            const auto colour = at (t);
+            const auto on = isEnabled();
+            const auto lit = on && (down || getToggleState());
+            gloss (g, bounds, 6.0f);
+            if (lit)
+            {
+                g.setColour (colour.withAlpha (0.35f));
+                g.fillRoundedRectangle (bounds, 6.0f);
+            }
+            juce::Path edge;
+            edge.addRoundedRectangle (bounds, 6.0f);
+            g.setColour (colour.withAlpha (on ? (lit ? 0.35f : over ? 0.25f : 0.14f) : 0.05f));
+            g.strokePath (edge, juce::PathStrokeType (6.0f));
+            g.setColour (colour.withAlpha (on ? (lit || over ? 1.0f : 0.8f) : 0.3f));
+            g.strokePath (edge, juce::PathStrokeType (1.6f));
+            g.setColour (lit ? juce::Colour (0xfffff2f4) : on ? juce::Colour (0xfff3dfe4) : juce::Colour (0xff6d5a61));
+            g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+            g.drawFittedText (getButtonText(), getLocalBounds().reduced (6, 2), juce::Justification::centred, 1, 0.8f);
+        }
+    };
+}
+
+//==============================================================================
 namespace
 {
     // THE TURNTABLE's pictures (0.3.0, resources/deck/: rendered by turntable3d.py, made ready by process_deck.py)
@@ -322,11 +400,16 @@ void DeckStrip::timerCallback()
 
 void DeckStrip::paint (juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff070507));
+    // 0.9.1: a screen on the mixer, in the turntables' Tron look: black glass, a thin neon edge.
+    const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+    g.setColour (juce::Colour (0xff040203));
     g.fillRoundedRectangle (bounds, 6.0f);
-    g.setColour (ParagonColours::panelEdge);
-    g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
+    {
+        juce::Path edge;
+        edge.addRoundedRectangle (bounds, 6.0f);
+        g.setGradientFill (tron::across (bounds.getX(), bounds.getRight(), 0.75f));
+        g.strokePath (edge, juce::PathStrokeType (1.2f));
+    }
     const auto record = processor.getDeckRecord (deckIndex);
     auto area = bounds.reduced (14.0f, 10.0f);
     auto labels = area.removeFromTop (18.0f);
@@ -346,7 +429,9 @@ void DeckStrip::paint (juce::Graphics& g)
     {
         const auto x = area.getX() + (float) b * w;
         const auto h = juce::jmax (1.0f, record->overview[(size_t) b] * area.getHeight() * 0.48f);
-        g.setColour ((x < area.getX() + through * area.getWidth() ? ParagonColours::accentDim : ParagonColours::accent).withAlpha (0.9f));
+        // The neon's colour along the strip, dimmer behind the needle (played).
+        const auto colour = tron::at ((float) b / (float) bins);
+        g.setColour (x < area.getX() + through * area.getWidth() ? colour.withAlpha (0.28f) : colour.withAlpha (0.95f));
         g.fillRect (juce::Rectangle<float> (x, mid - h, juce::jmax (1.0f, w), 2.0f * h));
     }
 
@@ -369,13 +454,24 @@ void DeckStrip::paint (juce::Graphics& g)
     // 0.9.0: whose record it is, under it.
     g.setColour (juce::Colour (0xff070507).withAlpha (0.8f));
     g.fillRect (nameArea.withWidth (juce::jmin (nameArea.getWidth(), 12.0f + 6.5f * (float) (record->name.length() + 3))));
-    g.setColour (ParagonColours::accent);
+    g.setColour (tron::pink.brighter (0.2f));
     g.drawText (ParamIDs::deckNames[deckIndex] + "  " + record->name.toUpperCase(), nameArea, juce::Justification::centredLeft, true);
 
-    // The needle.
+    // The needle: a neon line, white-hot in its middle.
     const auto x = area.getX() + through * area.getWidth();
-    g.setColour (ParagonColours::glow);
-    g.fillRect (juce::Rectangle<float> (x - 1.0f, area.getY() - 2.0f, 2.0f, area.getHeight() + 4.0f));
+    {
+        juce::Path needle;
+        needle.startNewSubPath (x, area.getY() - 2.0f);
+        needle.lineTo (x, area.getBottom() + 2.0f);
+        const auto colour = tron::at (through);
+        for (const auto& [width, alpha] : { std::pair { 9.0f, 0.08f }, std::pair { 5.0f, 0.18f }, std::pair { 2.4f, 1.0f } })
+        {
+            g.setColour (colour.withAlpha (alpha));
+            g.strokePath (needle, juce::PathStrokeType (width));
+        }
+        g.setColour (juce::Colour (0xfffff0f2));
+        g.strokePath (needle, juce::PathStrokeType (0.9f));
+    }
     g.setColour (ParagonColours::textDim);
     g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     g.drawText (juce::String (shownSeconds, 2) + " / " + juce::String (record->seconds(), 2) + " S",
@@ -411,63 +507,79 @@ void DeckCrossfader::timerCallback()
 
 void DeckCrossfader::paint (juce::Graphics& g)
 {
-    // A mixer's fader plate: the slot, its marks, DECK printed at the open end and CUT at the other, the cap (black,
-    // a neon line across it), and the slot lit on the deck's side as much as the deck is heard.
+    // The mixer's crossfader (0.9.1: in the turntables' Tron look): a black plate with a thin neon edge, its marks, the
+    // slot as a neon tube lit on each side of the cap as much as the deck at that end is heard (a CUT or TRANSFORM
+    // dims it as they cut), DECK A and DECK B printed at their ends in their neon, the cap black with a white-hot line.
     auto plate = getLocalBounds().toFloat().reduced (1.0f);
-    g.setColour (juce::Colour (0xff0b090c));
-    g.fillRoundedRectangle (plate, 6.0f);
-    g.setColour (ParagonColours::panelEdge);
-    g.drawRoundedRectangle (plate.reduced (0.5f), 6.0f, 1.0f);
+    g.setColour (juce::Colour (0xff040203));
+    g.fillRoundedRectangle (plate, 8.0f);
+    {
+        juce::Path edge;
+        edge.addRoundedRectangle (plate, 8.0f);
+        g.setGradientFill (tron::across (plate.getX(), plate.getRight(), 0.75f));
+        g.strokePath (edge, juce::PathStrokeType (1.2f));
+    }
     auto inner = plate.reduced (16.0f, 8.0f);
     auto labels = inner.removeFromBottom (14.0f);
     const auto slot = inner.withSizeKeepingCentre (inner.getWidth() - 40.0f, 6.0f);
     const auto at = (float) valueToProportionOfLength (getValue());
     const auto capX = slot.getX() + at * slot.getWidth();
+    const auto tAt = [&slot] (float x) { return (x - slot.getX()) / juce::jmax (1.0f, slot.getWidth()); };
 
     g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
     for (int k = 0; k <= 10; ++k)
     {
         const auto x = slot.getX() + slot.getWidth() * (float) k / 10.0f;
-        g.setColour (ParagonColours::textDim.withAlpha (k % 5 == 0 ? 0.7f : 0.35f));
+        g.setColour (tron::at ((float) k / 10.0f).withAlpha (k % 5 == 0 ? 0.8f : 0.4f));
         g.fillRect (juce::Rectangle<float> (x - 0.5f, slot.getY() - (k % 5 == 0 ? 12.0f : 8.0f), 1.0f, k % 5 == 0 ? 6.0f : 4.0f));
     }
     // 0.9.0: the A/B fader: A at the left, B at the right (HAMSTER: turned round), each end's name lit as much as its
-    // deck is heard (a CUT or TRANSFORM dims it as they cut).
+    // deck is heard.
     const auto leftDeck = shownHamster ? 1 : 0;
-    const auto endLabel = [&] (int d, juce::Justification where)
+    const auto endLabel = [&] (int d, juce::Justification where, juce::Colour neon)
     {
-        g.setColour (ParagonColours::textDim.interpolatedWith (ParagonColours::glow, shownGain[(size_t) d]));
+        g.setColour (juce::Colour (0xff5a4148).interpolatedWith (neon, 0.35f + 0.65f * shownGain[(size_t) d]));
         g.drawText ("DECK " + ParamIDs::deckNames[d], labels, where, false);
     };
-    endLabel (leftDeck, juce::Justification::centredLeft);
-    endLabel (1 - leftDeck, juce::Justification::centredRight);
-    g.setColour (ParagonColours::textDim);
+    endLabel (leftDeck, juce::Justification::centredLeft, tron::pink);
+    endLabel (1 - leftDeck, juce::Justification::centredRight, tron::orange);
+    g.setColour (tron::red.withAlpha (0.7f));
     g.drawText ("CROSSFADER", labels, juce::Justification::centred, false);
 
-    g.setColour (juce::Colour (0xff020102));
-    g.fillRoundedRectangle (slot, 3.0f);
-    // Each side of the cap lit by the deck whose end it runs to.
+    // The slot: black, then each side of the cap a neon tube as bright as its deck is heard.
+    g.setColour (juce::Colour (0xff010001));
+    g.fillRoundedRectangle (slot.expanded (2.0f), 4.0f);
     for (const auto side : { 0, 1 })
     {
         const auto d = side == 0 ? leftDeck : 1 - leftDeck;
-        const auto lit = side == 0 ? slot.withRight (capX) : slot.withLeft (capX);
-        g.setColour (ParagonColours::glow.withAlpha (0.15f + 0.6f * shownGain[(size_t) d]));
-        g.fillRoundedRectangle (lit, 3.0f);
-        if (shownGain[(size_t) d] > 0.01f)
+        const auto heard = shownGain[(size_t) d];
+        const auto from = side == 0 ? slot.getX() + 3.0f : capX + 14.0f;
+        const auto to = side == 0 ? capX - 14.0f : slot.getRight() - 3.0f;
+        if (to <= from)
+            continue;
+        juce::Path line;
+        line.startNewSubPath (from, slot.getCentreY());
+        line.lineTo (to, slot.getCentreY());
+        if (heard > 0.01f)
+            tron::tube (g, line, slot.getX(), slot.getRight(), 2.6f, heard);
+        else
         {
-            g.setColour (ParagonColours::glow.withAlpha (0.2f * shownGain[(size_t) d]));
-            g.fillRoundedRectangle (lit.expanded (0.0f, 4.0f), 5.0f);
+            g.setGradientFill (tron::across (slot.getX(), slot.getRight(), 0.22f));
+            g.strokePath (line, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
     }
 
+    // The cap: black gloss, a neon edge in its place's colour, a white-hot line across it.
     const auto cap = juce::Rectangle<float> (26.0f, juce::jmin (inner.getHeight(), 34.0f)).withCentre ({ capX, slot.getCentreY() });
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillRoundedRectangle (cap.translated (2.0f, 3.0f), 4.0f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2c282e), cap.getX(), cap.getY(), juce::Colour (0xff0d0b0e), cap.getX(), cap.getBottom(), false));
-    g.fillRoundedRectangle (cap, 4.0f);
-    g.setColour (ParagonColours::panelEdge.brighter (0.4f));
-    g.drawRoundedRectangle (cap.reduced (0.5f), 4.0f, 1.0f);
-    g.setColour (ParagonColours::accent);
+    const auto capColour = tron::at (tAt (capX));
+    g.setColour (capColour.withAlpha (0.18f));
+    g.fillRoundedRectangle (cap.expanded (5.0f), 8.0f);
+    tron::gloss (g, cap, 4.0f);
+    g.setColour (capColour);
+    g.drawRoundedRectangle (cap.reduced (0.5f), 4.0f, 1.4f);
+    g.setColour (capColour.withAlpha (0.5f));
+    g.fillRect (juce::Rectangle<float> (capX - 2.5f, cap.getY() + 3.0f, 5.0f, cap.getHeight() - 6.0f));
+    g.setColour (juce::Colour (0xfffff0f2));
     g.fillRect (juce::Rectangle<float> (capX - 1.0f, cap.getY() + 4.0f, 2.0f, cap.getHeight() - 8.0f));
 }
 
@@ -658,8 +770,7 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
                                 "TRANSFORM's rate (FADER page): a transformer scratch." } };
     for (const auto& [key, tip] : shown)
     {
-        auto button = std::make_unique<juce::TextButton> (deck::keyNames[(int) key]);
-        styleButton (*button);
+        auto button = std::make_unique<tron::Key> (deck::keyNames[(int) key]);   // 0.9.1: the mixer's neon keys
         button->setTooltip (tip);
         if (key == deck::Key::hold || key == deck::Key::cut || key == deck::Key::transform)
         {
@@ -701,6 +812,7 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
         label->setColour (juce::Label::textColourId, ParagonColours::accent);
     }
     keysLabel.setFont (juce::FontOptions (11.5f, juce::Font::bold));
+    keysLabel.setColour (juce::Label::textColourId, tron::pink.withAlpha (0.75f));
     keysLabel.setMinimumHorizontalScale (0.7f);
 
     for (int d = 0; d < ParamIDs::numDecks; ++d)
@@ -885,6 +997,51 @@ std::vector<ParamControl*> DeckPage::getShownControls()
 void DeckPage::paint (juce::Graphics& g)
 {
     DockStyle::drawPanel (g, getLocalBounds().toFloat());
+
+    // 0.9.1: the table in the turntables' Tron look. The floor under them: black, the red glow the mixer's neon casts
+    // on it, the faint red grid lined up with the one in the turntables' pictures (so it reads as one floor).
+    if (! mixerPlinth.isEmpty())
+    {
+        const auto floor = juce::Rectangle<float> ((float) platter.getX(), (float) mixerPlinth.getY() - 18.0f,
+                                                   (float) (platterB.getRight() - platter.getX()), (float) (mixerPlinth.getBottom() - mixerPlinth.getY()) + 36.0f)
+                               .getUnion (platter.getBounds().toFloat()).getUnion (platterB.getBounds().toFloat());
+        g.setColour (juce::Colour (0xff161212));   // (the pictures' floor at their edges, measured: about 22, 18, 18)
+        g.fillRoundedRectangle (floor, 10.0f);
+        const auto plinth = mixerPlinth.toFloat();
+        {
+            // The glow round the mixer, as the turntables' pictures have round theirs.
+            juce::ColourGradient glow (juce::Colour (0xff50060f), plinth.getCentreX(), plinth.getCentreY(),
+                                       juce::Colour (0x00161212), plinth.getCentreX() + plinth.getWidth() * 0.5f + 70.0f, plinth.getCentreY(), true);
+            g.setGradientFill (glow);
+            g.fillRect (plinth.expanded (70.0f, 40.0f).getIntersection (floor));
+        }
+        {
+            const auto picture = platter.getPictureArea() + platter.getPosition().toFloat();
+            const auto k = picture.getWidth() / 1400.0f;
+            const auto step = DeckPlatter::gridStep * k;
+            g.saveState();
+            g.reduceClipRegion (floor.toNearestInt());
+            g.setColour (tron::grid.withAlpha (0.32f));
+            const auto firstX = picture.getX() + std::floor ((floor.getX() - picture.getX()) / step) * step;
+            for (auto x = firstX; x <= floor.getRight(); x += step)
+                g.fillRect (juce::Rectangle<float> (x - 0.5f, floor.getY(), 1.0f, floor.getHeight()));
+            const auto rowZero = picture.getY() + DeckPlatter::gridFirstRow * k;
+            const auto firstY = rowZero + std::floor ((floor.getY() - rowZero) / step) * step;
+            for (auto y = firstY; y <= floor.getBottom(); y += step)
+                g.fillRect (juce::Rectangle<float> (floor.getX(), y - 0.5f, floor.getWidth(), 1.0f));
+            g.restoreState();
+        }
+
+        // The mixer: a gloss black body, its edge a neon tube pink to orange (left to right), as the turntables'.
+        tron::gloss (g, plinth, 14.0f);
+        juce::Path edge;
+        edge.addRoundedRectangle (plinth.reduced (1.0f), 14.0f);
+        tron::tube (g, edge, plinth.getX(), plinth.getRight(), 2.4f);
+        g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+        g.setColour (tron::red.withAlpha (0.8f));
+        g.drawText ("PR7-T  MIXER", plinth.withHeight (18.0f).translated (0.0f, 4.0f), juce::Justification::centred, false);
+    }
+
     if (rackShown)
         return;
     // The rack hidden: a header naming the deck and its record.
@@ -947,15 +1104,25 @@ void DeckPage::resized()
     platter.setBounds (left);
     speedLabelB.setBounds (right.removeFromBottom (labelHeight));
     platterB.setBounds (right);
+    {
+        // 0.9.1: DECK B moved in (a few pixels at most) so its picture's floor grid lines up with deck A's, and the
+        // floor painted between them (paint) runs on through both.
+        const auto step = DeckPlatter::gridStep * platter.getPictureArea().getWidth() / 1400.0f;
+        const auto off = std::fmod ((platterB.getPictureArea().getX() + (float) platterB.getX()) - (platter.getPictureArea().getX() + (float) platter.getX()), step);
+        const auto shift = juce::roundToInt (off);
+        platterB.setTopLeftPosition (platterB.getX() - shift, platterB.getY());
+        speedLabelB.setTopLeftPosition (speedLabelB.getX() - shift, speedLabelB.getY());
+        area.setRight (area.getRight() - shift);
+    }
     area.reduce (14, 0);
 
     // Between them: HIDE / SHOW RACK, the records' strips, the shown deck's keys, the legend, the crossfader.
     auto top = area.removeFromTop (28);
     rackButton.setBounds ((rackShown ? top : juce::Rectangle<int> (getWidth() - 150, 12, 130, 28)).removeFromRight (130));
-    area.removeFromTop (4);
+    area.removeFromTop (34);   // (0.9.1: room for the mixer's top edge and its name over the strips)
     const auto keysHeight = 2 * 34 + 6;
     const auto faderHeight = juce::jmin (76, area.getHeight() / 6);
-    const auto spare = area.getHeight() - (keysHeight + 8 + 20 + 8 + faderHeight + 3 * 8);
+    const auto spare = area.getHeight() - (keysHeight + 8 + 20 + 8 + faderHeight + 3 * 8 + 16);
     const auto stripHeight = juce::jlimit (60, 130, spare / 2);
     strip.setBounds (area.removeFromTop (stripHeight));
     area.removeFromTop (8);
@@ -969,9 +1136,23 @@ void DeckPage::resized()
         const auto keyWidth = (row.getWidth() - (perRow - 1) * 5) / perRow;
         const auto column = (int) k % perRow;
         keys[k].button->setBounds (row.getX() + column * (keyWidth + 5), row.getY(), keyWidth, row.getHeight());
+        if (auto* key = dynamic_cast<tron::Key*> (keys[k].button.get()))
+            key->t = (float) (key->getBounds().getCentreX() - keyArea.getX()) / (float) juce::jmax (1, keyArea.getWidth());   // its neon by its place
     }
     area.removeFromTop (8);
     keysLabel.setBounds (area.removeFromTop (20));
     area.removeFromTop (8);
-    crossfader.setBounds (area.removeFromBottom (faderHeight));
+    area.removeFromBottom (16);   // (0.9.1: the mixer's bottom edge under the crossfader)
+    crossfader.setBounds (area.removeFromTop (faderHeight));
+    // 0.9.1: the mixer's parts together, centred in the height left (with the rack hidden there's room to spare).
+    if (const auto spareBelow = area.getHeight() / 2; spareBelow > 0)
+    {
+        std::vector<juce::Component*> parts { &strip, &stripB, &keysLabel, &crossfader };
+        for (auto& k : keys)
+            parts.push_back (k.button.get());
+        for (auto* part : parts)
+            part->setTopLeftPosition (part->getX(), part->getY() + spareBelow);
+    }
+    // 0.9.1: the mixer's body round the strips, the keys and the crossfader.
+    mixerPlinth = strip.getBounds().getUnion (crossfader.getBounds()).expanded (12, 0).withTop (strip.getY() - 26).withBottom (crossfader.getBottom() + 12);
 }
