@@ -18,6 +18,7 @@ namespace
     const juce::Identifier wavetableTag { "Wavetable" };
     const juce::Identifier spectrumTag { "Spectrum" };
     const juce::Identifier sfzTag { "Sfz" };
+    const juce::Identifier deckRecordTag { "DeckRecord" };   // PR7-T 0.7.0
     const juce::Identifier freeformTag { "Freeform" };
 }
 
@@ -79,6 +80,8 @@ std::unique_ptr<juce::XmlElement> Rig::toXml() const
         element->setAttribute ("osc", oscillator + 1);
         element->setAttribute ("file", ref);
     }
+    if (deckRecord.has_value())
+        xml->createNewChildElement (deckRecordTag)->setAttribute ("file", *deckRecord);
     for (const auto& [oscillator, edit] : spectra)
     {
         if (edit.isFlat())
@@ -137,6 +140,8 @@ std::optional<Rig> Rig::fromXml (const juce::XmlElement& xml)
         if (const auto ref = element->getStringAttribute ("file"); oscillator >= 0 && oscillator < 8 && ref.isNotEmpty())
             rig.sfz[oscillator] = ref;
     }
+    if (const auto* element = xml.getChildByName (deckRecordTag))
+        rig.deckRecord = element->getStringAttribute ("file");
     for (const auto* element : xml.getChildWithTagNameIterator (spectrumTag))
     {
         const auto oscillator = element->getIntAttribute ("osc") - 1;

@@ -714,7 +714,8 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
                             ParamIDs::deckCues[0], ParamIDs::deckCues[1], ParamIDs::deckCues[2], ParamIDs::deckCues[3],
                             ParamIDs::deckScratchKeys, ParamIDs::deckScratchReach, ParamIDs::deckScratchRate, ParamIDs::deckModHand,
                             ParamIDs::deckCart, ParamIDs::deckEq[0], ParamIDs::deckEq[1], ParamIDs::deckEq[2], ParamIDs::deckKill[0],
-                            ParamIDs::deckKill[1], ParamIDs::deckKill[2], ParamIDs::deckFilter, ParamIDs::deckFilterRes, ParamIDs::deckWear })
+                            ParamIDs::deckKill[1], ParamIDs::deckKill[2], ParamIDs::deckFilter, ParamIDs::deckFilterRes, ParamIDs::deckWear,
+                            ParamIDs::deckSendDelay, ParamIDs::deckSendReverb, ParamIDs::deckInsert })
     {
         INFO (id);
         CHECK (ids.contains (id));
@@ -725,7 +726,8 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
 
     // Each page: its controls shown, inside the unit, none on top of another.
     const auto face = rack.getLocalBounds().reduced (20);
-    for (const auto pageKey : { DeckRack::Page::deck, DeckRack::Page::fader, DeckRack::Page::cues, DeckRack::Page::scratch, DeckRack::Page::mixer })
+    for (const auto pageKey : { DeckRack::Page::deck, DeckRack::Page::fader, DeckRack::Page::cues, DeckRack::Page::scratch, DeckRack::Page::mixer,
+                                DeckRack::Page::routing })
     {
         rack.getPageKey (pageKey).onClick();
         CHECK (rack.getPage() == pageKey);
@@ -745,9 +747,9 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
         CHECK (shownIds.contains (ParamIDs::deckLevel));   // LEVEL on every page (DECK OUT)
         CHECK (shownIds.contains (pageKey == DeckRack::Page::deck ? ParamIDs::deckPitch : pageKey == DeckRack::Page::fader ? ParamIDs::deckFader
                                   : pageKey == DeckRack::Page::cues ? ParamIDs::deckCues[0] : pageKey == DeckRack::Page::scratch ? ParamIDs::deckScratchReach
-                                  : ParamIDs::deckKill[1]));
+                                  : pageKey == DeckRack::Page::mixer ? ParamIDs::deckKill[1] : ParamIDs::deckSendDelay));
         CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : pageKey == DeckRack::Page::cues ? 6
-                                   : pageKey == DeckRack::Page::scratch ? 5 : 11));
+                                   : pageKey == DeckRack::Page::scratch ? 5 : pageKey == DeckRack::Page::mixer ? 11 : 4));
     }
 
     // ON is the deck's switch.
@@ -1218,4 +1220,172 @@ TEST_CASE ("THE RACK's switches (KILLs, HAMSTER) as keys: lit while on, and pres
         key->setToggleState (! on, juce::sendNotificationSync);   // as a click does
         CHECK ((p.processor.getParameters().getRawParameterValue (control->getParameterId())->load() > 0.5f) == ! on);
     }
+}
+
+//==============================================================================
+// ROUTING and THE RECORD IN PRESETS (0.7.0).
+namespace
+{
+    // A plugin with the deck on, THE HOUSE RECORD's 1 kHz tone playing (DROP 4) and the needle quiet; `setUp` first.
+    std::vector<float> deckTone (Plugin& p, double seconds, std::function<void (Plugin&)> setUp = {})
+    {
+        p.set (ParamIDs::deckOn, 1.0f);
+        p.set (ParamIDs::deckStart, 0.05f);
+        p.set (ParamIDs::deckNeedle, 0.0f);
+        if (setUp)
+            setUp (p);
+        return p.play (seconds, noteOn (24 + (int) deck::Key::drop4));
+    }
+    juce::File writeWav (const juce::File& folder, const juce::String& name, int samples)
+    {
+        const auto file = folder.getChildFile (name + ".wav");
+        juce::AudioBuffer<float> audio (2, samples);
+        for (int i = 0; i < samples; ++i)
+            for (int c = 0; c < 2; ++c)
+                audio.setSample (c, i, 0.25f * (float) std::sin (0.05 * i));
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+        auto writer = wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (44100.0).withNumChannels (2).withBitsPerSample (24));
+        writer->writeFromAudioSampleBuffer (audio, 0, samples);
+        return file;
+    }
+}
+
+TEST_CASE ("THE DECK's ROUTING: an insert bus's effects on the deck; the sends after its fader (an echo out); an off send does nothing", "[deck][routing]")
+{
+    // Insert bus A with its DRIVE pushed: the 1 kHz tone gains harmonics (on its own, straight into the mix, none).
+    const auto thirdOverFirst = [] (bool onBus)
+    {
+        Plugin p;
+        const auto out = deckTone (p, 0.8, [onBus] (Plugin& q)
+        {
+            q.set (ParamIDs::ins (0, "DriveOn"), 1.0f);
+            q.set (ParamIDs::ins (0, "DriveGain"), q.processor.getParameters().getParameter (ParamIDs::ins (0, "DriveGain"))->getNormalisableRange().end);
+            if (onBus)
+                q.set (ParamIDs::deckInsert, 1.0f);   // A
+        });
+        const auto from = (size_t) (0.4 * sampleRate);
+        return db (levelAt (out, 3000.0, from, 9600) / levelAt (out, 1000.0, from, 9600));
+    };
+    const auto dry = thirdOverFirst (false), driven = thirdOverFirst (true);
+    INFO ("3rd harmonic: " << dry << " dB dry, " << driven << " dB through bus A's DRIVE");
+    CHECK (dry < -80.0);
+    CHECK (driven > -40.0);
+
+    // DELAY on, the deck sent to it fully: cut the deck's fader and its echoes ring on; with nothing sent, the cut is silence.
+    const auto afterCut = [] (float send)
+    {
+        Plugin p;
+        deckTone (p, 0.6, [send] (Plugin& q)
+        {
+            q.set (ParamIDs::delayOn, 1.0f);
+            q.set (ParamIDs::delayMix, 1.0f);
+            q.set (ParamIDs::deckSendDelay, send);
+        });
+        p.set (ParamIDs::deckFader, 0.0f);
+        const auto tail = p.play (1.0);
+        return rms (tail, (size_t) (0.02 * sampleRate), tail.size());
+    };
+    CHECK (afterCut (0.0f) == 0.0);
+    CHECK (afterCut (1.0f) > 1.0e-3);
+
+    // Sent to DELAY while it's off: exactly as with nothing sent (an off send's buffer would come back dry).
+    Plugin plain, offSend;
+    const auto a = deckTone (plain, 0.5);
+    const auto b = deckTone (offSend, 0.5, [] (Plugin& q) { q.set (ParamIDs::deckSendDelay, 1.0f); });
+    CHECK (a == b);
+
+    // On a bus nothing else plays into and whose effects are off: the same level as straight into the mix, steady.
+    Plugin direct, bussed;
+    const auto straight = deckTone (direct, 1.0);
+    const auto viaBus = deckTone (bussed, 1.0, [] (Plugin& q) { q.set (ParamIDs::deckInsert, 2.0f); });
+    const auto at = (size_t) (0.4 * sampleRate), half = (size_t) (0.3 * sampleRate);
+    CHECK_THAT (db (rms (viaBus, at, at + half) / rms (straight, at, at + half)), WithinAbs (0.0, 0.1));
+    CHECK_THAT (db (rms (viaBus, at + half, viaBus.size()) / rms (viaBus, at, at + half)), WithinAbs (0.0, 0.1));
+}
+
+TEST_CASE ("THE RECORD IN PRESETS: saved with a preset and put back when it's loaded; old and factory presets leave it be", "[deck][presets]")
+{
+    // The preset file: the record's file, "" for the house record, or nothing (from before 0.7.0).
+    for (const auto& kept : { std::optional<juce::String> ("/records/break.wav"), std::optional<juce::String> (""), std::optional<juce::String>() })
+    {
+        Rig rig;
+        rig.name = "Deck";
+        rig.deckRecord = kept;
+        const auto back = Rig::fromXml (*juce::XmlDocument::parse (rig.toXml()->toString()));
+        REQUIRE (back.has_value());
+        CHECK (back->deckRecord == kept);
+    }
+
+    const auto folder = juce::File::createTempFile ("pr7t-presets");
+    folder.createDirectory();
+    const auto file = writeWav (folder, "my break", 24000);
+    {
+        Plugin p;
+        p.processor.useRigFolder (folder.getChildFile ("Rigs"));
+        REQUIRE (p.processor.loadDeckRecord (file));
+        REQUIRE (p.processor.saveCurrentRigAs ("Break Set"));
+
+        // A factory preset (no record in it) leaves the record on the deck.
+        const auto* init = p.processor.getRigLibrary().findFactory ("Init");
+        REQUIRE (init != nullptr);
+        p.processor.loadRig (*init);
+        CHECK (p.processor.getDeckRecord()->name == "my break");
+
+        // The house record on, then the saved preset loaded: its record back.
+        p.processor.useHouseRecord();
+        CHECK (p.processor.getDeckRecord() == deck::houseRecord());
+        const RigLibrary::Entry* saved = nullptr;
+        for (const auto& entry : p.processor.getRigLibrary().getEntries())
+            if (entry.rig.name == "Break Set")
+                saved = &entry;
+        REQUIRE (saved != nullptr);
+        CHECK (saved->rig.deckRecord == file.getFullPathName());
+        p.processor.loadRig (*saved);
+        CHECK (p.processor.getDeckRecord()->name == "my break");
+        CHECK (p.processor.getDeckRecordFile() == file.getFullPathName());
+
+        // A preset saved with the house record puts the house record on.
+        p.processor.useHouseRecord();
+        REQUIRE (p.processor.saveCurrentRigAs ("House Set"));
+        p.processor.loadDeckRecord (file);
+        for (const auto& entry : p.processor.getRigLibrary().getEntries())
+            if (entry.rig.name == "House Set")
+                p.processor.loadRig (entry);
+        CHECK (p.processor.getDeckRecord() == deck::houseRecord());
+    }
+    {
+        // The preset's file gone: the house record meanwhile, the preset still naming it, and the page saying why.
+        Plugin p;
+        p.processor.useRigFolder (folder.getChildFile ("Rigs"));
+        file.deleteFile();
+        for (const auto& entry : p.processor.getRigLibrary().getEntries())
+            if (entry.rig.name == "Break Set")
+                p.processor.loadRig (entry);
+        CHECK (p.processor.getDeckRecord() == deck::houseRecord());
+        CHECK (p.processor.getDeckRecordFile() == file.getFullPathName());
+        CHECK (p.processor.getDeckRecordProblem().contains ("missing"));
+    }
+    folder.deleteRecursively();
+}
+
+TEST_CASE ("THE RECORD changed from the page is an undo step, and marks the preset changed", "[deck][presets]")
+{
+    const auto folder = juce::File::createTempFile ("pr7t-undo");
+    folder.createDirectory();
+    const auto file = writeWav (folder, "undo me", 12000);
+    Plugin p;
+    p.processor.useRigFolder (folder.getChildFile ("Rigs"));
+    p.processor.flushUndoStep();
+    CHECK_FALSE (p.processor.isRigModified());
+    p.processor.loadDeckRecord (file);
+    p.processor.deckRecordChangedByUser();   // what LOAD does
+    p.processor.flushUndoStep();
+    CHECK (p.processor.isRigModified());
+    REQUIRE (p.processor.canUndo());
+    p.processor.undo();
+    CHECK (p.processor.getDeckRecord() == deck::houseRecord());
+    p.processor.redo();
+    CHECK (p.processor.getDeckRecord()->name == "undo me");
+    folder.deleteRecursively();
 }

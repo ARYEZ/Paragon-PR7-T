@@ -9,11 +9,12 @@
 // the big knobs with their values on small screens, the small keys with neon stripes, a neon status bar. Always pearl
 // black (Finish::paintAs), whatever the finish, as PR7-I's is on its dark page.
 //
-// Five pages, chosen by the PAGE keys under the badge: DECK (the turntable: PITCH, RPM, START, BRAKE, SPIN, SPIN
+// Six pages (0.7.0: in two rows of three), chosen by the PAGE keys under the badge: DECK (the turntable: PITCH, RPM, START, BRAKE, SPIN, SPIN
 // TIME, REACH, NEEDLE), FADER (the crossfader: FADER, CURVE, TRANSFORM's rate, HAMSTER, and a screen of it at work),
 // CUES (CUE 1-4, the KEYS menu and the key map) and SCRATCH (0.5.0: the scratch library's REACH, RATE, MOD HAND, its
 // keys' menu and a screen of its techniques to click), and MIXER (0.6.0: the cartridge, the mixer channel's EQ and
-// KILLs, its FILTER, the record's WEAR). Left to right: the badge and the page keys; the screen (the
+// KILLs, its FILTER, the record's WEAR) and ROUTING (0.7.0: the deck's sends to DELAY and REVERB, its insert bus).
+// Left to right: the badge and the page keys; the screen (the
 // record, how it's turning, where the needle is) over the ON, LOAD and HOUSE keys; the page; DECK OUT (the deck's own
 // meter and LEVEL).
 //
@@ -41,6 +42,7 @@ public:
     void setFaderGain (float);                       // the crossfader's gain now, for the FADER page's screen
     void setFaderInfo (const juce::StringArray&);    // the FADER screen's lines (its keys)
     void setKeyMap (const juce::StringArray&);       // the CUES screen's lines (the 12 keys)
+    void setRoutingInfo (const juce::StringArray&);  // the ROUTING screen's lines (0.7.0)
     // SCRATCH (0.5.0): the techniques' screen: a line each ("C2  BABY"), the one playing lit (-1: none). Clicking one
     // plays it (held while the mouse is down): onScratchPressed (technique, down).
     void setScratchList (const juce::StringArray&, int playing);
@@ -49,13 +51,14 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     int scratchAt (juce::Point<int>) const;           // the technique on the screen at a point (-1: none)
 
-    enum class Page { deck, fader, cues, scratch, mixer };   // (0.5.0: SCRATCH; 0.6.0: MIXER)
+    enum class Page { deck, fader, cues, scratch, mixer, routing };   // (0.5.0: SCRATCH; 0.6.0: MIXER; 0.7.0: ROUTING)
     void setPage (Page);
     Page getPage() const noexcept { return page; }
     std::function<void()> onPageChanged;
     juce::TextButton& getPageKey (Page p) noexcept
     {
-        return p == Page::deck ? deckKey : p == Page::fader ? faderKey : p == Page::cues ? cuesKey : p == Page::scratch ? scratchKey : mixerKey;
+        return p == Page::deck ? deckKey : p == Page::fader ? faderKey : p == Page::cues ? cuesKey : p == Page::scratch ? scratchKey
+             : p == Page::mixer ? mixerKey : routingKey;
     }
 
     // Where the controls go, in the unit's pixels.
@@ -85,14 +88,15 @@ private:
     void paintFaderScreen (juce::Graphics&);
     void paintKeyMap (juce::Graphics&);
     void paintScratchList (juce::Graphics&);
+    void paintRoutingScreen (juce::Graphics&);
     juce::Rectangle<float> scratchRow (int index) const;
 
     juce::Image satin;
     Screen screen;
     bool on = true;
     float meterDb = -100.0f, faderGain = 1.0f;
-    juce::StringArray faderInfo, keyMap, scratchList;
+    juce::StringArray faderInfo, keyMap, scratchList, routingInfo;
     int scratchPlaying = -1, scratchClicked = -1;
     Page page = Page::deck;
-    juce::TextButton deckKey, faderKey, cuesKey, scratchKey, mixerKey;
+    juce::TextButton deckKey, faderKey, cuesKey, scratchKey, mixerKey, routingKey;
 };

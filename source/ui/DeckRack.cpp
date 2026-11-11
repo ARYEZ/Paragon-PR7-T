@@ -65,7 +65,7 @@ namespace
 DeckRack::DeckRack()
 {
     setOpaque (false);
-    for (auto* key : { &deckKey, &faderKey, &cuesKey, &scratchKey, &mixerKey })
+    for (auto* key : { &deckKey, &faderKey, &cuesKey, &scratchKey, &mixerKey, &routingKey })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);   // a small key, its stripe lit on its page
         addAndMakeVisible (*key);
@@ -79,6 +79,9 @@ DeckRack::DeckRack()
     mixerKey.setComponentID ("rackMixer");
     mixerKey.setTooltip ("MIXER: the cartridge, the mixer channel's EQ and KILLs, the FILTER, the record's WEAR");
     mixerKey.onClick = [this] { setPage (Page::mixer); };
+    routingKey.setComponentID ("rackRouting");
+    routingKey.setTooltip ("ROUTING: the deck into the FX: its sends to DELAY and REVERB, an insert bus");
+    routingKey.onClick = [this] { setPage (Page::routing); };
     deckKey.setTooltip ("DECK: the turntable (PITCH, RPM, the motor's START and BRAKE, BACKSPIN, the wheel's REACH, the needle)");
     faderKey.setTooltip ("FADER: the crossfader (FADER, CURVE, TRANSFORM's rate, HAMSTER)");
     cuesKey.setTooltip ("CUES: where DROP 1-4 land, and which keys play the deck");
@@ -96,6 +99,7 @@ void DeckRack::resized()
     cuesKey.setBounds (pageKeyCell (2));
     scratchKey.setBounds (pageKeyCell (3));
     mixerKey.setBounds (pageKeyCell (4));
+    routingKey.setBounds (pageKeyCell (5));
 }
 
 void DeckRack::setScreen (const Screen& s)
@@ -156,6 +160,7 @@ void DeckRack::setPage (Page newPage)
     cuesKey.setToggleState (newPage == Page::cues, juce::dontSendNotification);
     scratchKey.setToggleState (newPage == Page::scratch, juce::dontSendNotification);
     mixerKey.setToggleState (newPage == Page::mixer, juce::dontSendNotification);
+    routingKey.setToggleState (newPage == Page::routing, juce::dontSendNotification);
     if (newPage == page)
         return;
     page = newPage;
@@ -186,10 +191,11 @@ juce::Rectangle<float> DeckRack::pageArea() const
 
 juce::Rectangle<int> DeckRack::pageKeyCell (int index) const
 {
-    auto area = badgeColumn();
-    area = area.removeFromBottom (60.0f).withTrimmedBottom (14.0f);   // names stamped under them
-    const auto width = area.getWidth() / 5.0f;   // (0.6.0: five pages)
-    return area.withX (area.getX() + width * (float) index).withWidth (width).withSizeKeepingCentre (34.0f, 28.0f).toNearestInt();
+    // 0.7.0: six pages, in two rows of three under the badge (PAGE printed over the top row), each key's name under it.
+    const auto area = badgeColumn().removeFromBottom (102.0f);
+    const auto width = area.getWidth() / 3.0f;
+    const auto top = area.getY() + 12.0f + 46.0f * (float) (index / 3);
+    return juce::Rectangle<float> (area.getX() + width * (float) (index % 3), top, width, 26.0f).withSizeKeepingCentre (44.0f, 26.0f).toNearestInt();
 }
 
 juce::Rectangle<int> DeckRack::screenArea() const { return displayColumn().withHeight (screenHeight).toNearestInt(); }
@@ -260,12 +266,12 @@ void DeckRack::paint (juce::Graphics& g)
     // The badge, as on PR7-G's and PR7-I's units: PARAGON over the PR7-T mark, what it is printed in red.
     PedalBody::paintBadge (g, badgeColumn().withHeight (88.0f).translated (2.0f, 2.0f), "TURNTABLE INSTRUMENT");
     {
-        const char* names[] = { "DECK", "FADER", "CUES", "SCRATCH", "MIXER" };
-        bracket (g, pageKeyCell (0).toFloat(), pageKeyCell (4).toFloat(), "PAGE");
-        for (int k = 0; k < 5; ++k)
+        const char* names[] = { "DECK", "FADER", "CUES", "SCRATCH", "MIXER", "ROUTING" };
+        bracket (g, pageKeyCell (0).toFloat(), pageKeyCell (2).toFloat(), "PAGE");
+        for (int k = 0; k < 6; ++k)
         {
             const auto key = pageKeyCell (k).toFloat();
-            stamped (g, names[k], key.translated (0.0f, key.getHeight() + 2.0f).withHeight (12.0f).expanded (5.0f, 0.0f), 6.5f);
+            stamped (g, names[k], key.translated (0.0f, key.getHeight() + 2.0f).withHeight (12.0f).expanded (12.0f, 0.0f), 7.0f);
         }
     }
 
@@ -293,19 +299,22 @@ void DeckRack::paint (juce::Graphics& g)
     auto title = pageArea().withY (content().getY()).withHeight (titleHeight);
     g.setFont (font (15.0f, juce::Font::bold | juce::Font::italic));
     ParagonLookAndFeel::drawStampedText (g, page == Page::deck ? "DECK" : page == Page::fader ? "FADER" : page == Page::cues ? "CUES"
-                                          : page == Page::scratch ? "SCRATCH" : "MIXER",
-                                         title.removeFromLeft (page == Page::scratch ? 110.0f : 90.0f), juce::Justification::centredLeft, Finish::ink());
+                                          : page == Page::scratch ? "SCRATCH" : page == Page::mixer ? "MIXER" : "ROUTING",
+                                         title.removeFromLeft (page == Page::scratch || page == Page::routing ? 110.0f : 90.0f), juce::Justification::centredLeft, Finish::ink());
     g.setColour (Finish::printedRed());
     g.setFont (font (8.0f));
     g.drawText (page == Page::deck ? "THE TURNTABLE: ITS SPEED, ITS MOTOR, THE HAND, THE NEEDLE"
               : page == Page::fader ? "THE CROSSFADER: HOW IT CUTS, TRANSFORM'S RATE, HAMSTER"
               : page == Page::cues ? "WHERE THE DROPS LAND, AND THE DECK'S KEYS"
               : page == Page::scratch ? "THE SCRATCH LIBRARY: A TECHNIQUE A KEY, IN TIME WITH THE SONG"
-                                      : "THE CARTRIDGE, THE MIXER CHANNEL'S EQ AND KILLS, ITS FILTER, THE RECORD'S WEAR",
+              : page == Page::mixer ? "THE CARTRIDGE, THE MIXER CHANNEL'S EQ AND KILLS, ITS FILTER, THE RECORD'S WEAR"
+                                    : "THE DECK INTO THE FX: ITS SENDS TO DELAY AND REVERB, AN INSERT BUS",
                 title, juce::Justification::centredLeft, false);
 
     if (page == Page::fader)
         paintFaderScreen (g);
+    if (page == Page::routing)
+        paintRoutingScreen (g);
     if (page == Page::cues || page == Page::scratch)
     {
         const auto cell = menuCell().toFloat();
@@ -389,6 +398,32 @@ void DeckRack::paintKeyMap (juce::Graphics& g)
     for (int i = 0; i < keyMap.size(); ++i)
         g.drawText (keyMap[i], juce::Rectangle<float> (text.getX() + columnWidth * (float) (i / rows), text.getY() + rowHeight * (float) (i % rows),
                                                        columnWidth, rowHeight), juce::Justification::centredLeft, false);
+    LedDisplay::paintGlassOverlay (g, glass, screenSize);
+}
+
+void DeckRack::setRoutingInfo (const juce::StringArray& lines)
+{
+    if (lines == routingInfo)
+        return;
+    routingInfo = lines;
+    if (page == Page::routing)
+        repaint (faderScreenArea());
+}
+
+void DeckRack::paintRoutingScreen (juce::Graphics& g)
+{
+    const auto glass = LedDisplay::paintScreen (g, faderScreenArea().toFloat(), screenSize);
+    auto text = glass.reduced (12.0f, 9.0f);
+    g.setColour (orange.withAlpha (0.6f));
+    g.setFont (font (8.5f));
+    g.drawText ("WHERE THE DECK GOES", text.removeFromTop (11.0f), juce::Justification::centredLeft, false);
+    text.removeFromTop (6.0f);
+    for (int i = 0; i < routingInfo.size(); ++i)
+    {
+        g.setColour (i < 3 ? orange : orange.withAlpha (0.65f));
+        g.setFont (font (i < 3 ? 11.0f : 9.5f));
+        g.drawFittedText (routingInfo[i], text.removeFromTop (i < 3 ? 18.0f : 15.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    }
     LedDisplay::paintGlassOverlay (g, glass, screenSize);
 }
 

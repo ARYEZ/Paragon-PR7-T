@@ -486,6 +486,13 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     make (mixerControls, ParamIDs::deckFilterRes, "RES", "The FILTER's resonance: the peak it sings with at its cutoff.");
     make (mixerControls, ParamIDs::deckWear, "WEAR", "A worn record: surface hiss and crackle that move with it (louder as it goes faster, "
                                                      "silent held) and a warp's once-a-turn wobble. NEW: none.");
+    // ROUTING (0.7.0): the deck into the FX.
+    make (routingControls, ParamIDs::deckSendDelay, "TO DELAY", "How much of the deck (after its fader) goes into DELAY's send, while DELAY "
+                                                                "is on (the FX page's SENDS). Cut the fader and the echoes ring on: an echo out.");
+    make (routingControls, ParamIDs::deckSendReverb, "TO REVERB", "How much of the deck (after its fader) goes into REVERB's send, while "
+                                                                  "REVERB is on (the FX page's SENDS).");
+    make (routingControls, ParamIDs::deckInsert, "INSERT", "An insert bus for the deck (A-D: the FX page's INSERTS: WAH, DRIVE, GLITCH, "
+                                                           "MOD, LO-FI), as an oscillator's; None: straight into the mix.", true);
     const char* killNames[] = { "KILL LOW", "KILL MID", "KILL HIGH" };
     for (int band = 0; band < 3; ++band)
         make (killControls, ParamIDs::deckKill[band], killNames[band], "Kills the band at once: the isolator's cut, as on a battle mixer "
@@ -495,7 +502,7 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
 
     // On the rack, in its pearl black (lettered in its ink whatever the window's finish).
     Finish::paintAs (Finish::Type::pearlBlack);
-    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls })
+    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls, &routingControls })
         for (auto& c : *list)
         {
             c->setRack (true);
@@ -534,11 +541,14 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
                               [this] (const juce::FileChooser& c)
                               {
                                   if (c.getResult().existsAsFile())
+                                  {
                                       processor.loadDeckRecord (c.getResult());
+                                      processor.deckRecordChangedByUser();
+                                  }
                                   timerCallback();
                               });
     };
-    houseKey.onClick = [this] { processor.useHouseRecord(); timerCallback(); };
+    houseKey.onClick = [this] { processor.useHouseRecord(); processor.deckRecordChangedByUser(); timerCallback(); };
     rack.onPageChanged = [this] { showRackPage(); };
     // A technique clicked on the SCRATCH screen: its key pressed, as long as the mouse is down (as from MIDI).
     rack.onScratchPressed = [this] (int technique, bool down)
@@ -649,6 +659,8 @@ void DeckPage::showRackPage()
     for (auto* list : { &mixerControls, &killControls })
         for (auto& c : *list)
             c->setVisible (page == DeckRack::Page::mixer);
+    for (auto& c : routingControls)
+        c->setVisible (page == DeckRack::Page::routing);
     scratchKeysMenu->setVisible (page == DeckRack::Page::scratch);
 }
 
@@ -709,6 +721,19 @@ void DeckPage::timerCallback()
     for (int t = 0; t < deck::numScratches; ++t)
         scratches.add ((settings.firstScratchKey >= 0 ? noteName (settings.firstScratchKey + t) : juce::String ("--")) + "  " + deck::scratchNames[t]);
     rack.setScratchList (scratches, deck.getScratch());
+    {
+        // ROUTING's screen: whether the sends' effects are on (a send to one that's off does nothing), the bus.
+        const auto value = [this] (const char* id) { return processor.getParameters().getRawParameterValue (id)->load(); };
+        const auto bus = juce::roundToInt (value (ParamIDs::deckInsert));
+        rack.setRoutingInfo ({
+            juce::String ("DELAY ") + (value (ParamIDs::delayOn) > 0.5f ? "ON" : "OFF: TURN IT ON (FX > SENDS)") + "   TO IT "
+                + juce::String (juce::roundToInt (value (ParamIDs::deckSendDelay) * 100.0f)) + "%",
+            juce::String ("REVERB ") + (value (ParamIDs::reverbOn) > 0.5f ? "ON" : "OFF: TURN IT ON (FX > SENDS)") + "   TO IT "
+                + juce::String (juce::roundToInt (value (ParamIDs::deckSendReverb) * 100.0f)) + "%",
+            bus > 0 ? "INSERT BUS " + ParamIDs::insertBusNames[bus] + ": ITS EFFECTS ON FX > INSERTS" : juce::String ("INSERT: NONE, STRAIGHT INTO THE MIX"),
+            "THE SENDS TAKE THE DECK AFTER ITS FADER: CUT IT AND THE ECHOES RING ON",
+            "THE RECORD IS SAVED WITH YOUR PRESETS AND YOUR PROJECTS" });
+    }
 
     juce::String legend ("KEYS:  ");
     for (const auto& k : keys)
@@ -722,7 +747,7 @@ void DeckPage::timerCallback()
 std::vector<ParamControl*> DeckPage::getShownControls()
 {
     std::vector<ParamControl*> result;
-    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls })
+    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls, &routingControls })
         for (auto& c : *list)
             result.push_back (c.get());
     result.push_back (keysMenu.get());
@@ -768,6 +793,8 @@ void DeckPage::resized()
             mixerControls[(size_t) i]->setBounds (rack.knobCell (i < 4 ? i : i + 1));
         for (int band = 0; band < (int) killControls.size(); ++band)
             killControls[(size_t) band]->setBounds (rack.killCell (band));
+        for (int i = 0; i < (int) routingControls.size(); ++i)
+            routingControls[(size_t) i]->setBounds (rack.knobCell (i));
         keysMenu->setBounds (rack.menuCell().reduced (6, 2));
         scratchKeysMenu->setBounds (rack.menuCell().reduced (6, 2));
         level->setBounds (rack.sideKnobCell());

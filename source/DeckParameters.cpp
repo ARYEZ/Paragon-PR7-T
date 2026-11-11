@@ -107,6 +107,16 @@ void addDeckParameters (juce::AudioProcessorValueTreeState::ParameterLayout& lay
         layout.add (std::make_unique<juce::AudioParameterFloat> (v47 (ParamIDs::deckWear), "Deck Wear", juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f },
             d.wear, withText ([] (float x, int) { return x <= 0.004f ? juce::String ("NEW") : juce::String (juce::roundToInt (x * 100.0f)) + "%"; })));
     }
+    // ROUTING (0.7.0): its own hint, 48. Nothing sent and no bus by default, so older projects play as before.
+    {
+        const auto v48 = [] (const char* id) { return juce::ParameterID { id, 48 }; };
+        const auto asPercent = [] (float x, int) { return juce::String (juce::roundToInt (x * 100.0f)) + "%"; };
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v48 (ParamIDs::deckSendDelay), "Deck Send Delay", juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f },
+                                                                 0.0f, juce::AudioParameterFloatAttributes().withStringFromValueFunction (asPercent)));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v48 (ParamIDs::deckSendReverb), "Deck Send Reverb", juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f },
+                                                                 0.0f, juce::AudioParameterFloatAttributes().withStringFromValueFunction (asPercent)));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (v48 (ParamIDs::deckInsert), "Deck Insert", ParamIDs::insertBusNames, 0));
+    }
     for (int cue = 0; cue < 4; ++cue)
         layout.add (makeFloat (ParamIDs::deckCues[cue], "Deck Cue " + juce::String (cue + 1), { 0.0f, 1.0f, 0.001f },
                                d.cues[(size_t) cue], [] (float x, int) { return juce::String (x * 100.0f, 1) + "%"; }));

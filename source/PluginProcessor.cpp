@@ -284,6 +284,7 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
         updateWavetables();
     keyboardMidi.ensureSize (2048);
     deckMidi.ensureSize (2048);
+    deckScratch.setSize (2, 512);   // a piece of processChunk at most (its scratchRight's size)
     synthMidi.ensureSize (2048);
     keyboardState.reset();
     deck.prepare (sampleRate);
@@ -1371,6 +1372,13 @@ void ParagonX1AudioProcessor::setDeckRecord (std::shared_ptr<const deck::Record>
     deckRecordForAudio = deckRecord.get();
 }
 
+void ParagonX1AudioProcessor::deckRecordChangedByUser()
+{
+    rigModified = true;
+    rigBroadcaster.sendChangeMessage();
+    requestCheckpoint();
+}
+
 void ParagonX1AudioProcessor::useHouseRecord()
 {
     deckRecordFile = {};
@@ -1539,11 +1547,19 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         if (osc.values[(size_t) ParamIDs::oscSetting ("On")]->load() > 0.5f)
             if (const auto b = juce::roundToInt (osc.values[(size_t) ParamIDs::oscSetting ("Insert")]->load()); b >= 1 && b <= synth::numInsertBuses)
                 rack->buses[(size_t) b - 1].used = true;
+    const auto deckOn = isOn (ParamIDs::deckOn);
+    // 0.7.0: THE DECK's ROUTING: its insert bus (None, A-D) is used too (so the engine clears it, and it's processed),
+    // and its channel's sends, each only while its effect is on (an off send's buffer would come back dry, as the
+    // engine's own sends don't).
+    const auto deckBus = deckOn && sendsReady ? juce::jlimit (0, synth::numInsertBuses, juce::roundToInt (param (ParamIDs::deckInsert))) : 0;
+    if (deckBus > 0)
+        rack->buses[(size_t) deckBus - 1].used = true;
+    const std::array<float, synth::numSends> deckSends { isOn (ParamIDs::delayOn) ? param (ParamIDs::deckSendDelay) : 0.0f,
+                                                         isOn (ParamIDs::reverbOn) ? param (ParamIDs::deckSendReverb) : 0.0f };
     if (sendsReady)
         for (auto& send : rack->sends)
             send.clear (0, numSamples);
     const auto chunkClock = engine.getSampleClock();   // 0.64.0: PROXIMITY's touches are placed from here
-    const auto deckOn = isOn (ParamIDs::deckOn);
     const auto deckSettings = getDeckSettings();
     for (int done = 0; done < numSamples; done += (int) std::size (scratchRight))
     {
@@ -1613,7 +1629,29 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
             // TRANSFORM keeps time with the song: where the song is at this piece's start.
             auto piece = deckSettings;
             piece.ppq = deckSettings.ppq >= 0.0 ? deckSettings.ppq + (double) (start + done) / getSampleRate() * deckSettings.bpm / 60.0 : -1.0;
-            deck.process (left + done, right, n, deckMidi, start + done, deckRecordForAudio.load(), piece);
+            // Into its own buffer, then where its routing sends it: the mix, or its insert bus (it fills the bus as an
+            // oscillator does, the bus's effects and sends after); and its channel's sends, after its fader.
+            auto* deckL = deckScratch.getWritePointer (0);
+            auto* deckR = deckScratch.getWritePointer (1);
+            juce::FloatVectorOperations::clear (deckL, n);
+            juce::FloatVectorOperations::clear (deckR, n);
+            deck.process (deckL, deckR, n, deckMidi, start + done, deckRecordForAudio.load(), piece);
+            auto* intoL = left + done;
+            auto* intoR = right;
+            if (deckBus > 0)
+            {
+                intoL = rack->buses[(size_t) deckBus - 1].buffer.getWritePointer (0, done);
+                intoR = rack->buses[(size_t) deckBus - 1].buffer.getWritePointer (1, done);
+            }
+            juce::FloatVectorOperations::add (intoL, deckL, n);
+            juce::FloatVectorOperations::add (intoR, deckR, n);
+            if (sendsReady)
+                for (size_t s = 0; s < deckSends.size(); ++s)
+                    if (deckSends[s] > 0.0f)
+                    {
+                        juce::FloatVectorOperations::addWithMultiply (rack->sends[s].getWritePointer (0, done), deckL, deckSends[s], n);
+                        juce::FloatVectorOperations::addWithMultiply (rack->sends[s].getWritePointer (1, done), deckR, deckSends[s], n);
+                    }
         }
         updateEffectModulation (settings, n);
         {
@@ -2457,6 +2495,7 @@ Rig ParagonX1AudioProcessor::captureRig() const
             rig.drawings[i] = drawings[(size_t) i];
     }
     rig.modulation = matrix;
+    rig.deckRecord = deckRecordFile;   // 0.7.0: THE DECK's record ("": the house record)
     return rig;
 }
 
@@ -2505,6 +2544,15 @@ void ParagonX1AudioProcessor::applyRig (const Rig& rig)
     {
         matrix = rig.modulation;
         compileMatrix();
+    }
+    // THE DECK's record (0.7.0): the preset's, if it holds one (loaded again only when it names another, or the one
+    // named couldn't be read); presets from before 0.7.0 and the factory's leave the record alone.
+    if (rig.deckRecord.has_value())
+    {
+        if (rig.deckRecord->isEmpty())
+            useHouseRecord();
+        else if (*rig.deckRecord != deckRecordFile || deckRecordProblem.isNotEmpty())
+            loadDeckRecord (juce::File (*rig.deckRecord));
     }
 
     applyingRig = false;

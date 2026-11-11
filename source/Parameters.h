@@ -553,6 +553,10 @@ namespace ParamIDs
     inline constexpr auto deckFilter    = "deckFilter";      // -1 (low-pass) to +1 (high-pass), 0 off
     inline constexpr auto deckFilterRes = "deckFilterRes";   // 0 to 1
     inline constexpr auto deckWear      = "deckWear";        // 0 to 1
+    // ROUTING (0.7.0, version hint 48): the deck's channel (after its fader) into the FX sends, and an insert bus.
+    inline constexpr auto deckSendDelay  = "deckSendDelay";    // 0 to 1: into DELAY's send (while DELAY's on)
+    inline constexpr auto deckSendReverb = "deckSendReverb";   // 0 to 1: into REVERB's send (while REVERB's on)
+    inline constexpr auto deckInsert     = "deckInsert";       // choice: insertBusNames (None, A-D)
 
     // THE INSERT BUSES (stage 7d, version hint 19): A to D, each "ins1"... "ins4" plus a setting below: PR7-G's
     // DRIVE and GLITCH (their IDs after the prefix, capitalised), then MOD and LO-FI as above, then the bus's SENDS.

@@ -361,6 +361,8 @@ public:
     std::shared_ptr<const deck::Record> getDeckRecord() const { return deckRecord; }
     bool loadDeckRecord (const juce::File&);   // false: it couldn't be read (getDeckRecordProblem says why); the record stays
     void useHouseRecord();
+    // The record changed from the page (LOAD, HOUSE): the preset marked changed, an undo step (0.7.0).
+    void deckRecordChangedByUser();
     juce::String getDeckRecordFile() const { return deckRecordFile; }   // empty: THE HOUSE RECORD
     juce::String getDeckRecordProblem() const { return deckRecordProblem; }
     static constexpr double deckRecordMaxSeconds = 180.0;
@@ -487,7 +489,7 @@ private:
         bool operator== (const Snapshot& other) const
         {
             return rig.parameters == other.rig.parameters && rig.wavetables == other.rig.wavetables && rig.spectra == other.rig.spectra
-                && rig.sfz == other.rig.sfz
+                && rig.sfz == other.rig.sfz && rig.deckRecord == other.rig.deckRecord   // (0.7.0: the deck's record, so changing it is an undo step)
                 && rig.drawings == other.rig.drawings && rig.modulation == other.rig.modulation && current == other.current;
         }
     };
@@ -594,6 +596,7 @@ private:
     // one kept 2 s so a block still playing it never reads freed memory.
     deck::Deck deck;
     juce::MidiBuffer deckMidi, synthMidi;   // (synthMidi: what's left for the synth, swapped back in)
+    juce::AudioBuffer<float> deckScratch;   // 0.7.0: a piece of the deck, before its routing
     std::shared_ptr<const deck::Record> deckRecord;
     std::atomic<const deck::Record*> deckRecordForAudio { nullptr };
     std::vector<std::pair<std::shared_ptr<const deck::Record>, double>> retiredDeckRecords;
