@@ -26,12 +26,13 @@ PR7-T is built in stages, each one released:
 | **4** | **The scratch library**: baby, chirp, transformer, flare, crab, tear... as hand-and-fader moves, synced to tempo, played from keys | **Works (0.5.0)** |
 | 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | **Started (0.3.0)**: our own 3D turntable in the family's "Tron" look, its platter turning and arm moving as it plays, the record grabbed with the mouse; the fader to come |
 | **6** | **The sound**: the cartridge, the mixer channel's isolator EQ and kills, its filter, a worn record | **Works (0.6.0)** |
+| 7 | **Into the FX**: the deck's sends to DELAY and REVERB, an insert bus; the record saved in presets | **Works (0.7.0)** |
 
 ## Using it
 
 - **DECK** (the tab beside SYNTH): the turntable.
   - **The rack** (0.4.0, as PR7-I's): the deck's controls on one of the family's rack units across the top, in three
-    pages (DECK, FADER, CUES); the screen shows the record and how it's turning; **ON**, **LOAD**, **HOUSE** under
+    pages (DECK, FADER, CUES, SCRATCH, MIXER, ROUTING); the screen shows the record and how it's turning; **ON**, **LOAD**, **HOUSE** under
     it; **DECK OUT**: the deck's meter and **LEVEL**. **HIDE RACK** gives the turntable the page's height.
   - **The sound** (0.6.0, the rack's MIXER page): **CART** (CLEAN, SCRATCH, WARM), the mixer channel's **LOW, MID,
     HIGH** isolator EQ with **KILL**s, the DJ **FILTER** (left low-pass, right high-pass) with **RES**, and **WEAR** (a
@@ -64,6 +65,10 @@ PR7-T is built in stages, each one released:
     strings): the platter turns as the record does, the arm moves in as it plays through, the neon brightens as it
     turns. Drag round the record with the mouse to scratch.
   - The deck goes through everything the synth does after it: the rack (FX), OUTPUT and the LIMITER.
+  - **Routing** (0.7.0, the rack's ROUTING page): **TO DELAY** and **TO REVERB** send the deck (after its crossfader,
+    so the echoes ring on after a cut) to the FX page's DELAY and REVERB (turn them on in FX > SENDS); **INSERT**
+    plays the deck into insert bus A-D instead of the main mix, through that bus's effects.
+  - **Presets** (0.7.0) remember the deck's record (the file's place, or the house record) and put it back.
   - Like a real turntable, the record's loudness follows its speed: a slow drag is quiet, a fast scratch loud (up to
     +6 dB), a record held still silent.
 - **SYNTH, MOD, ARP, FX, PRESETS, SETTINGS**: PR7-K's, unchanged. See

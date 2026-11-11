@@ -24,6 +24,7 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 4. **The scratch library** (0.5.0, done): below.
 5. **The platter view**: a drawn turntable and fader to scratch live with the mouse, glowing as it plays. Started in 0.3.0 (the Tron turntable, below); the fader comes with stage 3.
 6. **The sound** (0.6.0, done): below.
+7. **Into the FX** (0.7.0, done): the deck's sends, insert bus and the record in presets; below.
 
 ## THE DECK (0.2.0)
 
@@ -72,6 +73,26 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 - **Fixed** (found by the MIXER page's screenshot): `ParamControl::setRack` swapped a switch for a rack key and called `attach (parameterId)`, which returns at once for the parameter it already has, so the key was never attached (HAMSTER on 0.4.0-0.5.0 neither showed nor switched). It's attached directly now; tested by pressing it.
 - **A lesson about builds:** editing a header while a build compiles can leave a stale object that ninja thinks is current (it was written after the edit, from the old text). The test then reads the class at old offsets: here a 0x0 platter and a crash in a test that passed alone after recompiling. Don't edit while building; before a release, build from clean (`--clean-first`) or bump the version (which recompiles everything).
 - Tests: `[sound]` (neutral untouched; the isolator flat at 0 dB, the kills more than 40 dB at 60 Hz and 10 kHz and 30 dB at 800 Hz, -6 / +6 dB bands; the FILTER's ends more than 30 dB down at 1 kHz, RES's peak more than 10 dB, no click across the centre; CART's voicings; WEAR silent held, louder faster, the warp's 0.4% measured by the needle's speed (zero crossings would count the crackle); a KILL's ramp; the parameters in the plugin); the rack's switches lit and switching.
+
+## INTO THE FX (0.7.0)
+
+- **The owner's ask:** "Send the deck through the FX sends an insert buses and save the record and presets".
+- **Routing** (`processChunk`): the deck renders into `deckScratch` (2 x 512, sized in `prepareToPlay`), then is added
+  to the mix or, with `deckInsert` (choice `insertBusNames`: NONE, A-D) to that bus's buffer (the bus marked `used`,
+  as an oscillator's is, so the engine clears and runs it); `deckSendDelay` / `deckSendReverb` add it into
+  `rack->sends`, after the fader, each only while `delayOn` / `reverbOn` (an off send's buffer would come back dry).
+  Version hint **48**, all default off.
+- **The record in presets** (`Rig::deckRecord`, a `std::optional<juce::String>`, saved as a `DeckRecord` element with
+  `file`): `captureRig` fills it (`""` = the house record); `applyRig` applies it only when present (older and factory
+  presets leave the record alone), reloading only when it names another file or the current one had a problem.
+  `deckRecordChangedByUser` (LOAD, HOUSE) marks the rig modified and makes an undo checkpoint; `Snapshot::operator==`
+  compares the record. The sample isn't embedded: the path is kept, as in projects.
+- **The ROUTING page** (`DeckRack::Page::routing`, sixth PAGE key; `pageKeyCell` two rows of three, 44 x 26):
+  TO DELAY, TO REVERB, INSERT (a knob for its choices) in `knobCell` 0-2, the info screen (`setRoutingInfo`,
+  `paintRoutingScreen` in `faderScreenArea`) saying which effects are off. Snapshot `PARAGON_SNAPSHOT_DECKRACK=routing`.
+- Tests: `[routing]` (bus A's DRIVE adds harmonics to the 1 kHz tone at a steady level; the delay's echo rings on after
+  a fader cut; sends at 0 are sample-identical to 0.6.0), `[presets]` (the Rig round trip, save and load, a factory
+  preset leaves the record, a missing file kept named, LOAD undone).
 
 ## The project
 

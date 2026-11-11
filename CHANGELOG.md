@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.7.0
+
+**THE DECK into the FX: its own sends and insert bus, and the record saved in your presets.**
+
+Until now the deck went straight into the main mix (through the rack's effects, OUTPUT and the LIMITER) but couldn't
+reach the delay, the reverb or the insert buses, and a preset didn't know which record was on. A sixth rack page,
+**ROUTING**, fixes the first; presets now fix the second. The PAGE keys under the badge are two rows of three now, so
+six fit.
+
+- **TO DELAY** and **TO REVERB**: the deck's own send to the FX page's DELAY and REVERB, as a mixer channel's aux
+  sends. They take the deck **after its crossfader**, so a cut silences the dry deck but the echoes and the tail ring
+  on (tested: after a cut, the delay's repeats are still heard). A send is heard only while its effect is on (FX >
+  SENDS); the ROUTING page's screen says so when one is off.
+- **INSERT**: NONE, or bus **A-D**: the deck plays into that insert bus instead of the main mix, so its effects
+  (DRIVE, GLITCH, MOD, LO-FI) are on the deck, as they are on any oscillator sent there (tested: bus A's DRIVE adds its
+  harmonics to the house record's 1 kHz tone, at a steady level).
+- All three start at off, so your projects sound exactly as before (tested: sample for sample).
+- **The record in your presets**: saving a preset now saves which record is on the deck (the file's place, or the
+  house record), and loading it puts that record back. Changing the record (LOAD, HOUSE) marks the preset as changed
+  (the `*`), and can be undone. Presets from before 0.7.0, and the factory presets, leave the record alone, so
+  browsing them won't swap your record out. As with projects, the sample itself isn't copied into the preset: it's
+  found where it was. If it has moved, the deck says it's missing and plays the house record meanwhile.
+
 ## 0.6.0
 
 **THE SOUND: the cartridge, a DJ mixer's channel, and a worn record.**
