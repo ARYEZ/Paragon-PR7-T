@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonX1 VERSION 0.2.0 LANGUAGES C CXX)
+project(ParagonX1 VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -43,6 +43,19 @@ juce_add_binary_data(ParagonX1Fonts
         resources/fonts/Inter-Regular.ttf
         resources/fonts/Inter-SemiBold.ttf
         resources/fonts/InterDisplay-BlackItalic.ttf)
+
+# THE TURNTABLE's pictures (0.3.0): our own deck in the family's "Tron" look, rendered once in Blender (the deck, the
+# deck with its neon brighter, the platter and the arm that the page turns, and where things are). See
+# resources/deck/README.md.
+juce_add_binary_data(ParagonX1Deck
+    HEADER_NAME DeckImages.h
+    NAMESPACE   DeckImages
+    SOURCES
+        resources/deck/deck.jpg
+        resources/deck/deck-lit.jpg
+        resources/deck/platter.png
+        resources/deck/arm.png
+        resources/deck/deck.json)
 
 target_sources(ParagonX1
     PRIVATE
@@ -177,6 +190,7 @@ target_compile_definitions(ParagonX1
 target_link_libraries(ParagonX1
     PRIVATE
         ParagonX1Fonts
+        ParagonX1Deck
         juce::juce_audio_utils
         juce::juce_dsp
         juce::juce_recommended_warning_flags   # strict warnings for our code only

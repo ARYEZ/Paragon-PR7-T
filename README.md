@@ -24,7 +24,7 @@ PR7-T is built in stages, each one released:
 | **2** | **The deck engine**: a record played at whatever speed and direction the motor and your hand give it (backwards too), the motor's start and brake, BACKSPIN, HOLD, needle drops to four cues, the pitch wheel as your hand; clean at any speed | **Works (0.2.0)** |
 | 3 | The crossfader: its cut curve, reverse ("hamster"), clicks | Planned |
 | 4 | The scratch library: baby, chirp, transformer, flare, crab, tear... as hand-and-fader moves, synced to tempo, played from keys | Planned |
-| 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | Planned (0.2.0 has a simple platter to drag) |
+| 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | **Started (0.3.0)**: our own 3D turntable in the family's "Tron" look, its platter turning and arm moving as it plays, the record grabbed with the mouse; the fader to come |
 | 6 | The sound: cartridge and mixer EQ, the mixer's filter and kill switches, lo-fi (with PR7-K's CRACKLE) | Planned |
 
 ## Using it
@@ -46,6 +46,9 @@ PR7-T is built in stages, each one released:
   - **The knobs**: **PITCH** (the pitch fader, +-16%), **RPM** (33 or 45), **START** and **BRAKE** (the motor up to
     speed and down to a stop; a long BRAKE is a tape stop), **SPIN** and **SPIN TIME** (BACKSPIN's throw and how long
     it takes to stop), **REACH**, **NEEDLE** (the drop's thump and crackle), **CUE 1-4**, **LEVEL**.
+  - **The turntable** (0.3.0): our own deck in the family's "Tron" look (as PR7-D's kit, PR7-I's guitar and PR7-O's
+    strings): the platter turns as the record does, the arm moves in as it plays through, the neon brightens as it
+    turns. Drag round the record with the mouse to scratch.
   - The deck goes through everything the synth does after it: the rack (FX), OUTPUT and the LIMITER.
   - Like a real turntable, the record's loudness follows its speed: a slow drag is quiet, a fast scratch loud (up to
     +6 dB), a record held still silent.

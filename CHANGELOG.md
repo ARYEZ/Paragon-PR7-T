@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.3.0
+
+**THE TURNTABLE in the family's "Tron" look.**
+
+- **The DECK page's turntable is now our own 3D deck, in the same "Tron" look as PR7-D's kit, PR7-I's guitar and
+  PR7-O's strings**: a gloss black plinth with a glowing edge, a black chrome platter with a neon rim and strobe dots,
+  black vinyl with a glowing label ring and "PR7-T" on the label, a tonearm with a neon strip, the pitch fader,
+  START / STOP and 33 / 45, on a gloss floor with the red grid. The neon runs pink at the left through red to orange
+  at the right, as the kit's does. Modelled and rendered in Blender with the same materials, lights and glow as the
+  guitar's. Our own design: no maker's layout, name or logo.
+- **It moves**: the platter turns as the record does (forwards, backwards, held, spun back), the arm swings in as the
+  needle plays through the record, and the neon brightens as the record turns (dimming as it stops).
+- **Grab the record** as before: drag round it with the mouse to scratch. Now only the record grabs it (not the
+  plinth around it).
+- The turntable takes about half the page at its own shape; the knobs beside it are a little narrower.
+- Light on the CPU: the pictures are shrunk to your screen's size once (not on every frame, the lesson of PR7-D's kit
+  view), and the deck is only redrawn when something on it moves: a stopped record costs nothing.
+
 ## 0.2.0
 
 **THE DECK: a turntable to scratch, hold, spin back and drop the needle on.**

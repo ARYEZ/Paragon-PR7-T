@@ -426,8 +426,10 @@ TEST_CASE ("THE DECK's page: its tab, its keys press the deck's, the platter's h
 
     // The mouse on the platter: held still, the record stops; a quarter turn clockwise moves it 0.45 s on.
     auto& platter = page.getPlatter();
-    const auto centre = platter.getLocalBounds().getCentre().toFloat();
-    const auto r = (float) platter.getWidth() * 0.35f;
+    const auto centre = platter.getPlatterCentre();
+    const auto r = platter.getRecordRadius() * 0.7f;
+    CHECK (platter.getLocalBounds().toFloat().contains (centre));
+    CHECK (platter.getRecordRadius() > 150.0f);   // the record big enough to grab (at the plugin's 1x)
     const auto mouse = [&platter] (juce::Point<float> at)
     {
         return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys::leftButtonModifier,
@@ -448,4 +450,72 @@ TEST_CASE ("THE DECK's page: its tab, its keys press the deck's, the platter's h
     platter.mouseUp (mouse (centre.translated (r, 0.0f)));
     p.play (0.2);
     CHECK_THAT (p.processor.getDeck().getSpeed(), WithinAbs (1.0, 0.01));
+}
+
+TEST_CASE ("THE TURNTABLE's pictures: built in, the same shape, in the family's colours", "[deck][ui][colours]")
+{
+    // The Tron look keeps to the family's hues (pink through red to orange, 318-42 degrees), as PR7-D's kit, PR7-I's
+    // guitar and PR7-O's strings do: the render's tone mapping and glow would drift towards yellow and purple.
+    const auto pictures = DeckPlatter::picturesForTest();
+    REQUIRE (pictures.size() == 4);
+    for (const auto& picture : pictures)
+        REQUIRE (picture.isValid());
+    CHECK (pictures[0].getBounds() == pictures[1].getBounds());
+    CHECK_THAT (pictures[0].getWidth() / (double) pictures[0].getHeight(), WithinAbs (DeckPlatter::pictureAspect, 1.0e-3));
+    const char* names[] = { "the deck", "the deck lit", "the platter", "the arm" };
+    for (size_t k = 0; k < pictures.size(); ++k)
+    {
+        int counted = 0, outside = 0;
+        for (int y = 0; y < pictures[k].getHeight(); y += 2)
+            for (int x = 0; x < pictures[k].getWidth(); x += 2)
+                if (const auto c = pictures[k].getPixelAt (x, y); c.getSaturation() > 0.3f && c.getBrightness() > 0.15f && c.getAlpha() > 128)
+                {
+                    ++counted;
+                    if (const auto h = c.getHue() * 360.0f; h > 42.0f && h < 318.0f)
+                        ++outside;
+                }
+        INFO (names[k] << ": " << outside << " of " << counted << " coloured pixels outside the family's hues");
+        CHECK (counted > 100);
+        CHECK (outside == 0);
+    }
+}
+
+TEST_CASE ("THE TURNTABLE: the platter turns with the record, the arm swings in as it plays, the neon lights", "[deck][ui]")
+{
+    Plugin p;
+    p.set (ParamIDs::deckOn, 1.0f);
+    p.set (ParamIDs::deckStart, 0.05f);
+    DeckPage page (p.processor);
+    page.setSize (1476, 672);
+    auto& platter = page.getPlatter();
+    page.refreshForTest();
+    CHECK_THAT (platter.getArmAngle(), WithinAbs (0.0, 1.0e-4));   // at the record's start: as rendered
+    const auto still = platter.createComponentSnapshot (platter.getLocalBounds(), true, 1.0f);
+    // The arm is drawn (opaque): halfway down it, from its pivot (1095, 277.5) to its stylus (841.7, 793.7) in the
+    // 2x picture (deck.json), its neon strip glows. Mapped onto the page through the record's centre and radius.
+    {
+        const auto k = platter.getRecordRadius() / 381.0f;
+        const auto origin = platter.getPlatterCentre() - juce::Point<float> (570.0f, 550.0f) * k;
+        const auto mid = (origin + juce::Point<float> ((1095.0f + 841.7f) * 0.5f, (277.5f + 793.7f) * 0.5f) * k).roundToInt();
+        juce::uint8 brightest = 0;
+        for (int dy = -4; dy <= 4; ++dy)
+            for (int dx = -4; dx <= 4; ++dx)
+                brightest = std::max (brightest, still.getPixelAt (mid.x + dx, mid.y + dy).getRed());
+        CHECK (brightest > 150);
+    }
+
+    // DROP 4 (75% through the house record) and play: the arm has swung in towards the spindle (clockwise on screen,
+    // round its pivot at the top right), the platter has turned, the lit neon is showing.
+    p.play (0.5, noteOn (24 + (int) deck::Key::drop4));
+    page.refreshForTest();
+    // (The needle 81% through, at radius 190.4 px of the 2x picture: the arm 0.3092 rad in, worked out from deck.json.)
+    // (The motor's 50 ms START and the slipmat leave the needle about 45 ms behind that: 0.002 rad less.)
+    CHECK_THAT (platter.getArmAngle(), WithinAbs (0.3092, 0.004));
+    const auto playing = platter.createComponentSnapshot (platter.getLocalBounds(), true, 1.0f);
+    int changed = 0;
+    for (int y = 0; y < still.getHeight(); y += 3)
+        for (int x = 0; x < still.getWidth(); x += 3)
+            changed += still.getPixelAt (x, y) != playing.getPixelAt (x, y) ? 1 : 0;
+    INFO (changed << " sampled pixels changed");
+    CHECK (changed > 2000);
 }

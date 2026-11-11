@@ -3,6 +3,8 @@
 #include "ui/DockPanels.h"
 #include "ui/ParagonLookAndFeel.h"
 
+#include "DeckImages.h"
+
 namespace
 {
     constexpr float twoPi = juce::MathConstants<float>::twoPi;
@@ -23,38 +25,163 @@ namespace
 }
 
 //==============================================================================
+namespace
+{
+    // THE TURNTABLE's pictures (0.3.0, resources/deck/: rendered by turntable3d.py, made ready by process_deck.py)
+    // and where things are in them, in the picture's pixels (1400 x 1080, the plugin's 2x).
+    struct DeckPictures
+    {
+        juce::Image deck, lit, platter, arm;
+        float width = 1400.0f, height = 1080.0f;
+        juce::Point<float> platterCentre, pivot, stylus;
+        float platterRadius = 0.0f, recordRadius = 0.0f, armLength = 0.0f, grooveStart = 0.0f, grooveEnd = 0.0f;
+        juce::Rectangle<float> platterAt, armAt;   // where the turning layers were cut from
+        float branch = 1.0f;                       // which way round the arm meets the groove (see needleAt)
+
+        // Where the stylus is when the needle is at radius `r` round the platter's centre: where that circle meets
+        // the arm's reach from its pivot (turntable3d.py's needle_at).
+        juce::Point<float> needleAt (float r, float side) const
+        {
+            const auto d = pivot.getDistanceFrom (platterCentre);
+            const auto a = (d * d - armLength * armLength + r * r) / (2.0f * d);
+            const auto h = std::sqrt (juce::jmax (0.0f, r * r - a * a));
+            const auto u = (pivot - platterCentre) / d;
+            return platterCentre + u * a + juce::Point<float> (-u.y, u.x) * (h * side);
+        }
+    };
+
+    // JPEG moves a few colours a few degrees (and rings beside bright glints): every hue pulled into the family's
+    // 318-42 degrees once more as the pictures load, as PR7-D's kit view, PR7-I's guitar and PR7-O's strings do.
+    juce::Image inFamilyHues (juce::Image image)
+    {
+        image = image.convertedToFormat (juce::Image::ARGB);
+        juce::Image::BitmapData pixels (image, juce::Image::BitmapData::readWrite);
+        for (int y = 0; y < image.getHeight(); ++y)
+            for (int x = 0; x < image.getWidth(); ++x)
+            {
+                const auto c = pixels.getPixelColour (x, y);
+                const auto hue = c.getHue() * 360.0f;
+                if (c.getSaturation() > 0.0f && hue > 41.0f && hue < 319.0f)
+                    pixels.setPixelColour (x, y, c.withHue ((hue < 180.0f ? 41.0f : 319.0f) / 360.0f));
+            }
+        return image;
+    }
+
+    const DeckPictures& deckPictures()
+    {
+        static const DeckPictures pictures = []
+        {
+            DeckPictures p;
+            p.deck = inFamilyHues (juce::ImageFileFormat::loadFrom (DeckImages::deck_jpg, DeckImages::deck_jpgSize));
+            p.lit = inFamilyHues (juce::ImageFileFormat::loadFrom (DeckImages::decklit_jpg, DeckImages::decklit_jpgSize));
+            p.platter = juce::ImageCache::getFromMemory (DeckImages::platter_png, DeckImages::platter_pngSize);
+            p.arm = juce::ImageCache::getFromMemory (DeckImages::arm_png, DeckImages::arm_pngSize);
+            const auto json = juce::JSON::parse (juce::String::fromUTF8 (DeckImages::deck_json, DeckImages::deck_jsonSize));
+            const auto point = [&json] (const char* key) { const auto v = json[key]; return juce::Point<float> ((float) v[0], (float) v[1]); };
+            const auto rect = [&json] (const char* key)
+            {
+                const auto v = json["layers"][key];
+                return juce::Rectangle<float> ((float) v[0], (float) v[1], (float) v[2], (float) v[3]);
+            };
+            p.width = (float) json["width"];
+            p.height = (float) json["height"];
+            p.platterCentre = point ("platterCentre");
+            p.pivot = point ("pivot");
+            p.stylus = point ("stylus");
+            p.platterRadius = (float) json["platterRadius"];
+            p.recordRadius = (float) json["recordRadius"];
+            p.armLength = (float) json["arm"];
+            p.grooveStart = (float) json["grooveStart"];
+            p.grooveEnd = (float) json["grooveEnd"];
+            p.platterAt = rect ("platter");
+            p.armAt = rect ("arm");
+            // The render's y runs down, its world's up: find which meeting is the one the arm was rendered at.
+            p.branch = p.needleAt (p.grooveStart, 1.0f).getDistanceFrom (p.stylus) <= p.needleAt (p.grooveStart, -1.0f).getDistanceFrom (p.stylus) ? 1.0f : -1.0f;
+            return p;
+        }();
+        return pictures;
+    }
+}
+
 DeckPlatter::DeckPlatter (ParagonX1AudioProcessor& p) : processor (p)
 {
-    setTooltip ("The platter. Grab the record and drag round it to scratch: clockwise moves it forwards, back moves it "
+    setTooltip ("THE TURNTABLE. Grab the record and drag round it to scratch: clockwise moves it forwards, back moves it "
                 "back, holding still stops it. Let go and the motor takes it again. The label's mark turns with the "
-                "record; the arm moves in as the needle goes through the record.");
+                "record, the arm moves in as the needle goes through it, and the neon brightens as it turns.");
     setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    deckPictures();
     startTimerHz (30);
+}
+
+std::vector<juce::Image> DeckPlatter::picturesForTest()
+{
+    const auto& p = deckPictures();
+    return { p.deck, p.lit, p.platter, p.arm };
+}
+
+juce::Rectangle<float> DeckPlatter::pictureArea() const
+{
+    const auto& pics = deckPictures();
+    return juce::RectanglePlacement (juce::RectanglePlacement::centred)
+        .appliedTo (juce::Rectangle<float> (pics.width, pics.height), getLocalBounds().toFloat());
+}
+
+juce::Point<float> DeckPlatter::getPlatterCentre() const
+{
+    const auto area = pictureArea();
+    const auto k = area.getWidth() / deckPictures().width;
+    return area.getTopLeft() + deckPictures().platterCentre * k;
+}
+
+float DeckPlatter::getRecordRadius() const
+{
+    return deckPictures().recordRadius * pictureArea().getWidth() / deckPictures().width;
 }
 
 void DeckPlatter::timerCallback()
 {
-    shownTurns = processor.getDeck().getPositionSeconds() / deck::secondsPerTurn;
-    shownSpeed = processor.getDeck().getSpeed();
-    repaint();
+    const auto& deck = processor.getDeck();
+    const auto turns = deck.getPositionSeconds() / deck::secondsPerTurn;
+    const auto on = processor.getParameters().getRawParameterValue (ParamIDs::deckOn)->load() > 0.5f;
+    const auto lit = on ? juce::jlimit (0.0f, 1.0f, std::abs (deck.getSpeed())) : 0.0f;
+    const auto record = processor.getDeckRecord();
+    const auto through = record != nullptr && record->seconds() > 0.0
+                       ? (float) juce::jlimit (0.0, 1.0, deck.getPositionSeconds() / record->seconds()) : 0.0f;
+    const auto& pics = deckPictures();
+    const auto stylus = pics.needleAt (pics.grooveStart + (pics.grooveEnd - pics.grooveStart) * through, pics.branch);
+    const auto angleOf = [] (juce::Point<float> v) { return std::atan2 (v.y, v.x); };   // (y down: clockwise positive)
+    const auto swing = angleOf (stylus - pics.pivot) - angleOf (pics.stylus - pics.pivot);
+    // Repainted only when something shows it (a stopped record costs nothing).
+    if (std::abs (turns - shownTurns) * twoPi * pics.recordRadius > 0.25 || std::abs (lit - shownLit) > 0.01f || std::abs (swing - armAngle) > 0.0005f)
+    {
+        shownTurns = turns;
+        shownLit = lit;
+        armAngle = swing;
+        repaint();
+    }
 }
 
 float DeckPlatter::angleAt (juce::Point<float> point) const
 {
-    const auto centre = getLocalBounds().toFloat().getCentre();
+    const auto centre = getPlatterCentre();
     return std::atan2 (point.x - centre.x, centre.y - point.y);   // clockwise from twelve o'clock
 }
 
 void DeckPlatter::mouseDown (const juce::MouseEvent& e)
 {
+    if (e.position.getDistanceFrom (getPlatterCentre()) > getRecordRadius() * 1.1f)
+        return;   // a hand on the record, not beside it
     grabbed = true;
     handTurns = 0.0f;
     lastAngle = angleAt (e.position);
     processor.setDeckMouseHand (true, 0.0f);
+    repaint();
 }
 
 void DeckPlatter::mouseDrag (const juce::MouseEvent& e)
 {
+    if (! grabbed)
+        return;
     const auto angle = angleAt (e.position);
     auto turned = angle - lastAngle;   // the shorter way round
     if (turned > juce::MathConstants<float>::pi)
@@ -68,99 +195,93 @@ void DeckPlatter::mouseDrag (const juce::MouseEvent& e)
 
 void DeckPlatter::mouseUp (const juce::MouseEvent&)
 {
+    if (! grabbed)
+        return;
     grabbed = false;
     processor.setDeckMouseHand (false, 0.0f);
+    repaint();
+}
+
+void DeckPlatter::prepare (float scale)
+{
+    const auto area = pictureArea();
+    if (juce::exactlyEqual (shown.scale, scale) && shown.area == area && shown.deck.isValid())
+        return;
+    const auto& pics = deckPictures();
+    shown.scale = scale;
+    shown.area = area;
+    const auto k = area.getWidth() / pics.width * scale;   // the picture's pixels to the screen's
+    const auto shrink = [k] (const juce::Image& image)
+    {
+        return image.isValid() ? image.rescaled (juce::jmax (1, juce::roundToInt ((float) image.getWidth() * k)),
+                                                 juce::jmax (1, juce::roundToInt ((float) image.getHeight() * k)),
+                                                 juce::Graphics::highResamplingQuality)
+                               : juce::Image();
+    };
+    shown.deck = shrink (pics.deck);
+    shown.lit = shrink (pics.lit);
+    shown.platter = shrink (pics.platter);
+    shown.arm = shrink (pics.arm);
 }
 
 void DeckPlatter::paint (juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
-    const auto size = juce::jmin (bounds.getWidth(), bounds.getHeight());
-    const auto centre = bounds.getCentre();
-    const auto radius = size * 0.5f - 4.0f;
+    const auto scale = (float) g.getInternalContext().getPhysicalPixelScaleFactor();
+    prepare (scale);
+    if (! shown.deck.isValid())
+        return;
+    const auto& pics = deckPictures();
+    const auto area = shown.area;
+    const auto k = (float) shown.deck.getWidth() / pics.width;   // the picture's pixels to the screen's (as shrunk)
+
+    // The deck copied, not resampled: the context's scale cancels ours and its corner sits on a whole screen pixel.
+    const auto origin = (area.getTopLeft() * scale).roundToInt().toFloat();
+    const auto onScreen = [&] (juce::Point<float> at) { return juce::AffineTransform::translation (origin.x + at.x, origin.y + at.y).scaled (1.0f / scale); };
+    g.drawImageTransformed (shown.deck, onScreen ({}));
+    if (shownLit > 0.01f && shown.lit.isValid())
+    {
+        g.setOpacity (shownLit);
+        g.drawImageTransformed (shown.lit, onScreen ({}));
+        g.setOpacity (1.0f);
+    }
+
+    // The platter, turned round its centre as far as the record has turned.
+    g.setImageResamplingQuality (juce::Graphics::mediumResamplingQuality);
     const auto rotation = (float) (std::fmod (shownTurns, 1.0) * twoPi);
-    const auto at = [centre] (float r, float angle) { return centre + juce::Point<float> (r * std::sin (angle), -r * std::cos (angle)); };
-    const auto circle = [centre] (float r) { return juce::Rectangle<float> (2.0f * r, 2.0f * r).withCentre (centre); };
+    const auto platterCorner = pics.platterAt.getTopLeft() * k;
+    const auto platterCentre = pics.platterCentre * k - platterCorner;   // in the platter's own picture
+    g.drawImageTransformed (shown.platter, juce::AffineTransform::translation (-platterCentre.x, -platterCentre.y)
+                                               .rotated (rotation)
+                                               .translated (origin.x + platterCorner.x + platterCentre.x, origin.y + platterCorner.y + platterCentre.y)
+                                               .scaled (1.0f / scale));
 
-    // The platter: brushed dark metal, its rim's strobe dots turning with it.
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2a262c), centre.x, centre.y - radius,
-                                             juce::Colour (0xff0e0c0f), centre.x, centre.y + radius, false));
-    g.fillEllipse (circle (radius));
-    g.setColour (ParagonColours::panelEdge.brighter (0.3f));
-    g.drawEllipse (circle (radius).reduced (0.5f), 1.0f);
-    for (int dot = 0; dot < 90; ++dot)
-    {
-        const auto p = at (radius - 7.0f, rotation + twoPi * (float) dot / 90.0f);
-        g.setColour (juce::Colour (0xff8a848c).withAlpha (dot % 2 == 0 ? 0.7f : 0.35f));
-        g.fillEllipse (juce::Rectangle<float> (2.6f, 2.6f).withCentre (p));
-    }
-
-    // The record: black vinyl, its grooves, a sheen that stays put as it turns under the light.
-    const auto vinyl = radius * 0.9f;
-    g.setColour (juce::Colour (0xff050405));
-    g.fillEllipse (circle (vinyl));
-    for (auto r = vinyl * 0.4f; r < vinyl - 2.0f; r += 2.5f)
-    {
-        g.setColour (juce::Colours::white.withAlpha (std::fmod (r, 7.5f) < 2.5f ? 0.06f : 0.025f));
-        g.drawEllipse (circle (r), 0.6f);
-    }
+    // A still sheen over the turning vinyl (the light stays where it is as the record goes round under it).
+    const auto centre = getPlatterCentre();
+    const auto radius = getRecordRadius();
     {
         juce::Path sheen;
-        sheen.addPieSegment (circle (vinyl), -0.9f, -0.35f, 0.42f);
-        sheen.addPieSegment (circle (vinyl), juce::MathConstants<float>::pi - 0.9f, juce::MathConstants<float>::pi - 0.35f, 0.42f);
-        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        const auto disc = juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (centre);
+        sheen.addPieSegment (disc, -0.9f, -0.35f, 0.4f);
+        sheen.addPieSegment (disc, juce::MathConstants<float>::pi - 0.9f, juce::MathConstants<float>::pi - 0.35f, 0.4f);
+        g.setColour (juce::Colours::white.withAlpha (0.045f));
         g.fillPath (sheen);
     }
 
-    // The label, in the PR7 colours, and its mark: where the record is in its turn.
-    const auto label = vinyl * 0.36f;
-    g.setGradientFill (juce::ColourGradient (ParagonColours::glow, centre.x - label, centre.y - label,
-                                             ParagonColours::accent, centre.x + label, centre.y + label, false));
-    g.fillEllipse (circle (label));
-    g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.drawLine ({ at (label * 0.18f, rotation), at (label * 0.95f, rotation) }, 4.0f);
-    g.saveState();
-    g.addTransform (juce::AffineTransform::rotation (rotation, centre.x, centre.y));
-    g.setColour (juce::Colours::black.withAlpha (0.7f));
-    g.setFont (juce::FontOptions (label * 0.3f, juce::Font::bold | juce::Font::italic));
-    g.drawText ("PR7-T", juce::Rectangle<float> (label * 1.6f, label * 0.4f).withCentre (centre.translated (0.0f, label * 0.48f)),
-                juce::Justification::centred, false);
-    g.restoreState();
-    g.setColour (ParagonColours::metalMid);
-    g.fillEllipse (circle (juce::jmax (3.0f, radius * 0.025f)));
-
-    // The arm: from its pivot at the top right, the needle moving in as it plays through the record.
-    const auto record = processor.getDeckRecord();
-    const auto through = record != nullptr && record->seconds() > 0.0
-                       ? (float) juce::jlimit (0.0, 1.0, processor.getDeck().getPositionSeconds() / record->seconds()) : 0.0f;
-    const auto pivot = juce::Point<float> (centre.x + radius * 0.88f, centre.y - radius * 0.88f);
-    const auto needleRadius = vinyl * (0.92f - 0.5f * through);
-    // The needle where a circle of that radius round the platter's centre meets the arm's reach from the pivot.
-    const auto armLength = radius * 1.2f;
-    const auto d = pivot.getDistanceFrom (centre);
-    const auto a = (d * d - armLength * armLength + needleRadius * needleRadius) / (2.0f * d);
-    const auto h = std::sqrt (juce::jmax (0.0f, needleRadius * needleRadius - a * a));
-    const auto towards = (pivot - centre) / d;
-    const auto mid = centre + towards * a;
-    const auto needlePoint = mid + juce::Point<float> (towards.y, -towards.x) * h;
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.drawLine ({ pivot.translated (3.0f, 4.0f), needlePoint.translated (3.0f, 4.0f) }, 6.0f);
-    g.setColour (ParagonColours::metalDark);
-    g.drawLine ({ pivot, needlePoint }, 5.0f);
-    g.setColour (ParagonColours::metalLight);
-    g.drawLine ({ pivot, needlePoint }, 1.5f);
-    g.setColour (ParagonColours::ink);
-    g.fillRoundedRectangle (juce::Rectangle<float> (14.0f, 22.0f).withCentre (needlePoint), 2.0f);
-    g.setColour (ParagonColours::metalMid);
-    g.fillEllipse (juce::Rectangle<float> (radius * 0.16f, radius * 0.16f).withCentre (pivot));
-    g.setColour (ParagonColours::ink);
-    g.fillEllipse (juce::Rectangle<float> (radius * 0.07f, radius * 0.07f).withCentre (pivot));
+    // The arm, swung about its pivot as far as the needle has gone through the record. (Opaque again: an image is
+    // drawn at the current colour's opacity, and the sheen's was 4.5%.)
+    g.setOpacity (1.0f);
+    const auto armCorner = pics.armAt.getTopLeft() * k;
+    const auto pivot = pics.pivot * k - armCorner;
+    g.drawImageTransformed (shown.arm, juce::AffineTransform::translation (-pivot.x, -pivot.y)
+                                           .rotated (armAngle)
+                                           .translated (origin.x + armCorner.x + pivot.x, origin.y + armCorner.y + pivot.y)
+                                           .scaled (1.0f / scale));
 
     // A hand on the record: its edge lit.
     if (grabbed)
     {
-        g.setColour (ParagonColours::accent.withAlpha (0.8f));
-        g.drawEllipse (circle (vinyl).reduced (1.0f), 2.5f);
+        g.setColour (ParagonColours::accent.withAlpha (0.85f));
+        g.drawEllipse (juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (centre), 2.5f);
     }
 }
 
@@ -425,9 +546,11 @@ void DeckPage::resized()
     recordLabel.setBounds (bar);
     area.removeFromTop (8);
 
-    auto left = area.removeFromLeft (juce::jmin (540, area.getHeight()));
+    // THE TURNTABLE at its picture's shape, as big as the height allows (about half the page).
+    const auto turntableHeight = area.getHeight() - 30;
+    auto left = area.removeFromLeft (juce::jmin (area.getWidth() / 2, juce::roundToInt ((float) turntableHeight * DeckPlatter::pictureAspect)));
     speedLabel.setBounds (left.removeFromBottom (30));
-    platter.setBounds (left.withSizeKeepingCentre (juce::jmin (left.getWidth(), left.getHeight()), juce::jmin (left.getWidth(), left.getHeight())));
+    platter.setBounds (left);
     area.removeFromLeft (16);
 
     strip.setBounds (area.removeFromTop (190));
@@ -445,10 +568,10 @@ void DeckPage::resized()
     std::vector<juce::Component*> row;
     for (auto& c : motor)
         row.push_back (c.get());
-    SynthPanel::layoutRow (area.removeFromTop (ParamControl::knobHeight), row, 110);
+    SynthPanel::layoutRow (area.removeFromTop (ParamControl::knobHeight), row, 100);
     area.removeFromTop (14);
     row.clear();
     for (auto& c : needle)
         row.push_back (c.get());
-    SynthPanel::layoutRow (area.removeFromTop (ParamControl::knobHeight), row, 110);
+    SynthPanel::layoutRow (area.removeFromTop (ParamControl::knobHeight), row, 100);
 }
