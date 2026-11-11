@@ -186,6 +186,11 @@ Each change keeps every sum and its order (only independent work overlapped, or 
 - After pushing, check the release published (both zips) about 15 minutes later, **and that its `target_commitish` is your commit**. If the version was already taken, CI skips silently and the release you'd link is someone else's build.
 - **One chat per plugin at a time.** In October 2026 two chats released PR7-G and PR7-V under the same version numbers: one chat's releases were skipped, and features (and a UI fix) went missing from the builds the owner installed. Before choosing a version, check the repo's tags *and* other branches for unreleased work; if another branch is ahead, merge it first so every release contains everything.
 - The owner installs from GitHub Releases on **Windows**.
+- **Linux CI's DNS** (0.9.1, PR7-O's fix, the owner: "do the cloudflare work around and just publish the windows
+  version if need be"): the Linux runner uses Cloudflare's DNS (1.1.1.1) and apt retries (5 a download, the install 3
+  times), after its own DNS failed to find the Ubuntu mirrors (0.6.0 never published). The release job runs whatever
+  the builds did (`!cancelled()`) and publishes the platforms that passed, so long as Windows did; the notes say when
+  Linux is missing. This session can't re-run CI jobs (403): a push is the way to try again.
 - **No version tags came over from PR7-K** (they were dropped when the repository was seeded): PR7-T's releases start at `v0.1.0`.
 
 ## How the owner likes to work
