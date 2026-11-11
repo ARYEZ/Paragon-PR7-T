@@ -77,7 +77,7 @@ SettingsPage::SettingsPage (ParagonX1AudioProcessor& p)
         styleButton (*button, button == &saveDefault);
         addAndMakeVisible (*button);
     }
-    saveDefault.setTooltip ("A new PR7-K (in any project) starts with these links");
+    saveDefault.setTooltip ("A new PR7-T (in any project) starts with these links");
     exportLinks.setTooltip ("Save these links to a file, to back them up or use on another computer");
     importLinks.setTooltip ("Load links from a file saved with EXPORT");
     clearLinks.setTooltip ("Forget every link (undo isn't kept for links: EXPORT first if you might want them back)");
@@ -199,17 +199,18 @@ void SettingsPage::paint (juce::Graphics& g)
     }
     section (finishArea, "FINISH",
              "The unit's colour: pearl white with chrome rings, or pearl white or pearl black with neon pink-to-orange rings "
-             "round the black keys and knobs. Saved on this computer, so every PR7-K you open uses it.");
+             "round the black keys and knobs. Saved on this computer, so every PR7-T you open uses it.");
     section (rigsArea, "PRESETS", "Your presets are files in this folder, so you can back them up or share them:\n"
                                   + processor.getRigLibrary().getFolder().getFullPathName());
     section (midiArea, "MIDI LINKS", shownLinks.isEmpty()
                  ? juce::String ("None yet. Right-click a knob and choose MIDI learn, then move a knob or fader on your controller; "
                                  "or drag the CC chip (right of the strip above the keyboard) onto a knob.")
                  : juce::String ("Your controller's knobs and faders, and the knobs they turn. Kept with the project; "
-                                 "SAVE AS DEFAULT for every new PR7-K."));
+                                 "SAVE AS DEFAULT for every new PR7-T."));
     section (aboutArea, "ABOUT",
-             juce::String ("Paragon PR7-K v") + JucePlugin_VersionString
-                 + ". The PR7 family's synthesizer, inspired by VPS Avenger (our own design and code). "
+             juce::String ("Paragon PR7-T v") + JucePlugin_VersionString
+                 + ". The PR7 family's turntable instrument (its deck to come), with PR7-K's synthesizer and effects "
+                   "(our own design and code). "
                    "Free and open source under the GNU AGPLv3.\n"
                    "Built with JUCE (AGPLv3) and the Inter typeface (SIL OFL). "
                    "The piano presets play the Salamander Grand Piano by Alexander Holm (CC-BY 3.0), "

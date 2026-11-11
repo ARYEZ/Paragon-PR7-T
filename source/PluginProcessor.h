@@ -35,7 +35,7 @@ struct CurrentRig
     }
 };
 
-// PR7-K: an instrument. MIDI in (from the DAW and the on-screen keyboard),
+// PR7-T: an instrument. MIDI in (from the DAW and the on-screen keyboard),
 // the synth engine, the preset's level and OUTPUT, stereo out.
 class ParagonX1AudioProcessor final : public juce::AudioProcessor,
                                       private juce::Timer,
@@ -539,7 +539,7 @@ private:
     void installSfzLoads();
     void setSfzInstrument (int osc, std::shared_ptr<const synth::sfz::Instrument>);
     juce::File sfzLibrariesFile() const;
-    std::unique_ptr<juce::ThreadPool> sfzPool = std::make_unique<juce::ThreadPool> (juce::ThreadPoolOptions{}.withNumberOfThreads (1).withThreadName ("PR7-K SFZ loading"));
+    std::unique_ptr<juce::ThreadPool> sfzPool = std::make_unique<juce::ThreadPool> (juce::ThreadPoolOptions{}.withNumberOfThreads (1).withThreadName ("PR7-T SFZ loading"));
 
     // FFT: each oscillator's curve, and the edited copies of its wave built
     // from it (in the background; then handed to the audio thread as the

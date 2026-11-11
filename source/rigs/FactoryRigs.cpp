@@ -595,7 +595,7 @@ std::vector<Rig> makeFactoryRigs()
         route (b, "macro2", ParamIDs::reverbMix, reverb);
         b.rig.modulation.macroNames[1] = "SPACE";
     };
-    const juce::String needs = " Needs the Salamander Grand Piano (free; PR7-K offers to download it, about 742 MB, once).";
+    const juce::String needs = " Needs the Salamander Grand Piano (free; PR7-T offers to download it, about 742 MB, once).";
 
     Builder concert ("Salamander Grand", 41, { "Keys", "Piano", "Sampled" },
                      "A concert grand, sampled: a Yamaha C5 recorded at 16 strengths a minor third apart (Alexander Holm's "

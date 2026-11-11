@@ -2772,8 +2772,8 @@ namespace
         s.rig.sfz.clear();
         s.rig.sfz[0] = libraries::refFor (libraries::salamanderGrand());
         const auto& names = s.rig.modulation.macroNames;
-        s.rig.notes = p.notes + " MACROS: " + names[0] + ", " + names[1] + ", " + names[2] + "." + " The Salamander Grand Piano (free; PR7-K offers to download it once, about 742 MB). Without "
-                                "it this preset plays PR7-K's own synthesized piano.";
+        s.rig.notes = p.notes + " MACROS: " + names[0] + ", " + names[1] + ", " + names[2] + "." + " The Salamander Grand Piano (free; PR7-T offers to download it once, about 742 MB). Without "
+                                "it this preset plays PR7-T's own synthesized piano.";
         s.rig.sampled = nullptr;
         b.rig.sampled = std::make_shared<const Rig> (s.rig);
     }
@@ -12509,8 +12509,8 @@ namespace
             o.tweak (s);
         const auto& names = s.rig.modulation.macroNames;
         s.rig.notes = o.notes + " MACROS: " + names[0] + ", " + names[1] + ", " + names[2] + "."
-                    + " The Sonatina Symphonic Orchestra (free; PR7-K offers to download it once, about 1.4 GB). Without it "
-                      "this preset plays PR7-K's own synthesized orchestra.";
+                    + " The Sonatina Symphonic Orchestra (free; PR7-T offers to download it once, about 1.4 GB). Without it "
+                      "this preset plays PR7-T's own synthesized orchestra.";
         s.rig.sampled = nullptr;
         b.rig.sampled = std::make_shared<const Rig> (s.rig);
     }
@@ -12684,7 +12684,7 @@ namespace
         strings.set (ParamIDs::patchLevel, -10.4f);
         lightspeed (strings, { 0.6f, 0.6f, 0.4f, 0.9f, 0.6f });
         orchestra (strings, { { { 4, "Strings - Notation/All Strings Sustain.sfz", 0.8f, 0.0f, true } }, {}, -10.0f,
-                              "Shimmering strings for the stars going by: the orchestra's whole string section, with PR7-K's "
+                              "Shimmering strings for the stars going by: the orchestra's whole string section, with PR7-T's "
                               "own strings underneath, quieter. The recordings aren't looped and stop after about four "
                               "seconds: the strings underneath carry long chords.",
                               -1.0f, 0.0f, 0.0f, 0.0f, -1.0f,
@@ -13123,8 +13123,8 @@ namespace
             g.tweak (s);
         const auto& names = s.rig.modulation.macroNames;
         s.rig.notes = g.notes + " MACROS: " + names[0] + ", " + names[1] + ", " + names[2] + "."
-                    + " The Salamander Grand Piano (free; PR7-K offers to download it once, about 742 MB). Without it this "
-                      "preset plays PR7-K's own synthesized piano.";
+                    + " The Salamander Grand Piano (free; PR7-T offers to download it once, about 742 MB). Without it this "
+                      "preset plays PR7-T's own synthesized piano.";
         s.rig.sampled = nullptr;
         b.rig.sampled = std::make_shared<const Rig> (s.rig);
     }

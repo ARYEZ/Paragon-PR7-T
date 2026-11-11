@@ -57,7 +57,7 @@ jobs:
           curl -sSL -o pluginval.zip \
             "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/${{ matrix.pluginval_zip }}"
           unzip -q pluginval.zip
-          PLUGIN="build/ParagonX1_artefacts/Release/VST3/Paragon PR7-K.vst3"
+          PLUGIN="build/ParagonX1_artefacts/Release/VST3/Paragon PR7-T.vst3"
           RUN="${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process --validate"
           if [ "$RUNNER_OS" = "Linux" ]; then
             # pluginval's own Linux VST3 host now and then crashes as it shuts
@@ -108,10 +108,7 @@ jobs:
   # above, zipped, with notes from CHANGELOG.md.
   release:
     name: Release
-    # Off in the seed commit: this is still PR7-K's 0.74.1, and PR7-T has no
-    # releases yet, so a push would publish a PR7-K build under PR7-T's name.
-    # Back on in 0.1.0, once the plugin is PR7-T.
-    if: false
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -153,9 +150,9 @@ jobs:
           # Artifact storage drops file permissions; put the executable flag
           # back on the Linux binary so hosts will load it. (No macOS build since
           # 0.71.0: the owner has no Mac, and the account's macOS runners never came.)
-          chmod -R a+x "artifacts/ParagonX1-VST3-Linux/Paragon PR7-K.vst3/Contents/x86_64-linux"
+          chmod -R a+x "artifacts/ParagonX1-VST3-Linux/Paragon PR7-T.vst3/Contents/x86_64-linux"
           for os in Windows Linux; do
-            (cd "artifacts/ParagonX1-VST3-${os}" && zip -qr "../../release/ParagonPR7-K-${TAG}-${os}-VST3.zip" "Paragon PR7-K.vst3")
+            (cd "artifacts/ParagonX1-VST3-${os}" && zip -qr "../../release/ParagonPR7-T-${TAG}-${os}-VST3.zip" "Paragon PR7-T.vst3")
           done
           ls -l release
 
@@ -180,5 +177,5 @@ jobs:
           # --target creates the tag on this exact commit if it doesn't exist yet.
           gh release create "$TAG" release/*.zip \
             --target "$GITHUB_SHA" \
-            --title "Paragon PR7-K ${TAG}" \
+            --title "Paragon PR7-T ${TAG}" \
             --notes-file notes.md

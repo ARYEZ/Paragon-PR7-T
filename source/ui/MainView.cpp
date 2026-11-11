@@ -295,10 +295,10 @@ void MainView::offerMissingLibrary()
     const auto kind = missing->what.toLowerCase();
     juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "GET THE " + missing->what,
         (fallback ? "\"" + rig.name + "\" can play the " + missing->name + ", a free sampled " + kind + " that isn't on this computer "
-                    "yet. Until it is, it plays PR7-K's own synthesized sounds.\n\n"
+                    "yet. Until it is, it plays PR7-T's own synthesized sounds.\n\n"
                   : "\"" + rig.name + "\" plays the " + missing->name + ", a free sampled " + kind + " that isn't on this computer yet.\n\n")
         + "Download it now? It's about " + juce::String (missing->bytes / 1000000) + " MB (it unpacks to about "
-        + juce::String (missing->unpackedMb) + " MB, in PR7-K's presets folder). It only has to be downloaded once. "
+        + juce::String (missing->unpackedMb) + " MB, in PR7-T's presets folder). It only has to be downloaded once. "
           "The screen and the header show how far it has got."
         + (audioProcessor.getLibraryDownload().getState() == libraries::Download::State::failed
                ? "\n\nThe last try didn't work: " + audioProcessor.getLibraryDownload().getMessage() : juce::String()),

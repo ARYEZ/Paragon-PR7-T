@@ -56,7 +56,7 @@ public:
         std::shared_ptr<const synth::Wavetable> table, pulse;
     };
 
-    SpectralBuilder() : juce::Thread ("PR7-K table builder") { startThread (juce::Thread::Priority::low); }
+    SpectralBuilder() : juce::Thread ("PR7-T table builder") { startThread (juce::Thread::Priority::low); }
     ~SpectralBuilder() override { stopThread (4000); }
 
     void submit (Job job)
@@ -234,7 +234,7 @@ ParagonX1AudioProcessor::ParagonX1AudioProcessor()
     // MIDI LEARN: a new instance starts with the default links, if some were saved.
     if (midiLinksDefaultFile().existsAsFile())
         importMidiLinks (midiLinksDefaultFile());
-    // A new PR7-K is the Init preset (every parameter at its default), so the
+    // A new PR7-T is the Init preset (every parameter at its default), so the
     // header names it and < > step on from there.
     currentRig = { "Init", {}, "Init" };
 
@@ -2801,7 +2801,7 @@ bool ParagonX1AudioProcessor::exportArpMidi (int arp, const juce::File& file) co
 juce::File ParagonX1AudioProcessor::arpMidiDragFile (int arp) const
 {
     auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                    .getChildFile ("Paragon PR7-K").getChildFile ("Arp " + juce::String (arp + 1) + ".mid");
+                    .getChildFile ("Paragon PR7-T").getChildFile ("Arp " + juce::String (arp + 1) + ".mid");
     exportArpMidi (arp, file);
     return file;
 }

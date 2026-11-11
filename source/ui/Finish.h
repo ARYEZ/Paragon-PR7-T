@@ -11,7 +11,7 @@
 //
 // It's a preference of the person, not part of a project or a rig: kept in a
 // small settings file in the user's application data folder, so every
-// PR7-K opened afterwards, in any project, uses the same finish. Every open
+// PR7-T opened afterwards, in any project, uses the same finish. Every open
 // window repaints when it changes.
 namespace Finish
 {
@@ -29,7 +29,7 @@ namespace Finish
     juce::ChangeBroadcaster& changes();
 
     // 0.49.0: whether the SYNTH page shows the rack (the OSCILLATORS and FILTER panels) or the front panel,
-    // remembered in the same settings file, for every PR7-K window.
+    // remembered in the same settings file, for every PR7-T window.
     bool rackShown();
     void setRackShown (bool);
 
