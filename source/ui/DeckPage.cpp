@@ -465,17 +465,29 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     keysMenu = std::make_unique<ParamControl> (state, ParamIDs::deckKeys, "KEYS", "The octave the deck's 12 keys start on (C1: the "
                                                                                  "on-screen keyboard's lowest).");
     keysMenu->setCompact (true);
+    // SCRATCH (0.5.0): the scratch library.
+    make (scratchControls, ParamIDs::deckScratchReach, "REACH", "The scratch library's stroke at full velocity, in turns of the platter "
+                                                                "(a turn: 1.8 seconds of the record). A softer key: down to 40% of it.");
+    make (scratchControls, ParamIDs::deckScratchRate, "RATE", "The techniques at half, normal or double speed (each takes a set number "
+                                                              "of beats at the song's tempo: BABY half a beat, TRANSFORMER two).", true);
+    make (scratchControls, ParamIDs::deckModHand, "MOD HAND", "The mod wheel as a hand on the record (it stays where you leave it, unlike "
+                                                              "the pitch wheel's spring). On, the mod wheel is the deck's, not the synth's.");
+    scratchKeysMenu = std::make_unique<ParamControl> (state, ParamIDs::deckScratchKeys, "SCRATCH KEYS",
+                                                      "The octave the scratch library's 12 keys start on (a technique a key), or OFF.");
+    scratchKeysMenu->setCompact (true);
     level = std::make_unique<ParamControl> (state, ParamIDs::deckLevel, "LEVEL", "The deck's level, before the rack (EQ, DOMINION...), "
                                                                                  "OUTPUT and the LIMITER, which it goes through as the synth does.");
 
     // On the rack, in its pearl black (lettered in its ink whatever the window's finish).
     Finish::paintAs (Finish::Type::pearlBlack);
-    for (auto* list : { &deckControls, &faderControls, &cueControls })
+    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls })
         for (auto& c : *list)
         {
             c->setRack (true);
             rack.addChildComponent (*c);
         }
+    scratchKeysMenu->setRack (true);
+    rack.addChildComponent (*scratchKeysMenu);
     for (auto* c : { keysMenu.get(), level.get() })
     {
         c->setRack (true);
@@ -513,6 +525,17 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     };
     houseKey.onClick = [this] { processor.useHouseRecord(); timerCallback(); };
     rack.onPageChanged = [this] { showRackPage(); };
+    // A technique clicked on the SCRATCH screen: its key pressed, as long as the mouse is down (as from MIDI).
+    rack.onScratchPressed = [this] (int technique, bool down)
+    {
+        const auto first = processor.getDeckSettings().firstScratchKey;
+        if (first < 0 || processor.getParameters().getRawParameterValue (ParamIDs::deckOn)->load() <= 0.5f)
+            return;   // OFF, or the deck off: the key would play the synth
+        if (down)
+            processor.getKeyboardState().noteOn (1, first + technique, 0.9f);
+        else
+            processor.getKeyboardState().noteOff (1, first + technique, 0.0f);
+    };
     addAndMakeVisible (rack);
     showRackPage();
 
@@ -606,6 +629,9 @@ void DeckPage::showRackPage()
     for (auto& c : cueControls)
         c->setVisible (page == DeckRack::Page::cues);
     keysMenu->setVisible (page == DeckRack::Page::cues);
+    for (auto& c : scratchControls)
+        c->setVisible (page == DeckRack::Page::scratch);
+    scratchKeysMenu->setVisible (page == DeckRack::Page::scratch);
 }
 
 void DeckPage::press (deck::Key key, bool down)
@@ -659,6 +685,10 @@ void DeckPage::timerCallback()
         if (deck::keyNames[k].isNotEmpty())
             keyMap.add (noteName (settings.firstKey + k) + "  " + deck::keyNames[k]);
     rack.setKeyMap (keyMap);
+    juce::StringArray scratches;
+    for (int t = 0; t < deck::numScratches; ++t)
+        scratches.add ((settings.firstScratchKey >= 0 ? noteName (settings.firstScratchKey + t) : juce::String ("--")) + "  " + deck::scratchNames[t]);
+    rack.setScratchList (scratches, deck.getScratch());
 
     juce::String legend ("KEYS:  ");
     for (const auto& k : keys)
@@ -672,10 +702,11 @@ void DeckPage::timerCallback()
 std::vector<ParamControl*> DeckPage::getShownControls()
 {
     std::vector<ParamControl*> result;
-    for (auto* list : { &deckControls, &faderControls, &cueControls })
+    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls })
         for (auto& c : *list)
             result.push_back (c.get());
     result.push_back (keysMenu.get());
+    result.push_back (scratchKeysMenu.get());
     result.push_back (level.get());
     return result;
 }
@@ -710,7 +741,10 @@ void DeckPage::resized()
             faderControls[(size_t) i]->setBounds (rack.knobCell (i));
         for (int i = 0; i < (int) cueControls.size(); ++i)
             cueControls[(size_t) i]->setBounds (rack.knobCell (i));
+        for (int i = 0; i < (int) scratchControls.size(); ++i)
+            scratchControls[(size_t) i]->setBounds (rack.knobCell (i));
         keysMenu->setBounds (rack.menuCell().reduced (6, 2));
+        scratchKeysMenu->setBounds (rack.menuCell().reduced (6, 2));
         level->setBounds (rack.sideKnobCell());
         onKey.setBounds (rack.keyCell (0));
         loadKey.setBounds (rack.keyCell (1));

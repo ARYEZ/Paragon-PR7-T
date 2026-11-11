@@ -65,7 +65,7 @@ namespace
 DeckRack::DeckRack()
 {
     setOpaque (false);
-    for (auto* key : { &deckKey, &faderKey, &cuesKey })
+    for (auto* key : { &deckKey, &faderKey, &cuesKey, &scratchKey })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);   // a small key, its stripe lit on its page
         addAndMakeVisible (*key);
@@ -73,6 +73,9 @@ DeckRack::DeckRack()
     deckKey.setComponentID ("rackDeck");
     faderKey.setComponentID ("rackFader");
     cuesKey.setComponentID ("rackCues");
+    scratchKey.setComponentID ("rackScratch");
+    scratchKey.setTooltip ("SCRATCH: the scratch library (its keys, REACH, RATE, MOD HAND); click a technique to play it");
+    scratchKey.onClick = [this] { setPage (Page::scratch); };
     deckKey.setTooltip ("DECK: the turntable (PITCH, RPM, the motor's START and BRAKE, BACKSPIN, the wheel's REACH, the needle)");
     faderKey.setTooltip ("FADER: the crossfader (FADER, CURVE, TRANSFORM's rate, HAMSTER)");
     cuesKey.setTooltip ("CUES: where DROP 1-4 land, and which keys play the deck");
@@ -88,6 +91,7 @@ void DeckRack::resized()
     deckKey.setBounds (pageKeyCell (0));
     faderKey.setBounds (pageKeyCell (1));
     cuesKey.setBounds (pageKeyCell (2));
+    scratchKey.setBounds (pageKeyCell (3));
 }
 
 void DeckRack::setScreen (const Screen& s)
@@ -146,6 +150,7 @@ void DeckRack::setPage (Page newPage)
     deckKey.setToggleState (newPage == Page::deck, juce::dontSendNotification);
     faderKey.setToggleState (newPage == Page::fader, juce::dontSendNotification);
     cuesKey.setToggleState (newPage == Page::cues, juce::dontSendNotification);
+    scratchKey.setToggleState (newPage == Page::scratch, juce::dontSendNotification);
     if (newPage == page)
         return;
     page = newPage;
@@ -178,8 +183,8 @@ juce::Rectangle<int> DeckRack::pageKeyCell (int index) const
 {
     auto area = badgeColumn();
     area = area.removeFromBottom (60.0f).withTrimmedBottom (14.0f);   // names stamped under them
-    const auto width = area.getWidth() / 3.0f;
-    return area.withX (area.getX() + width * (float) index).withWidth (width).withSizeKeepingCentre (50.0f, 28.0f).toNearestInt();
+    const auto width = area.getWidth() / 4.0f;   // (0.5.0: four pages)
+    return area.withX (area.getX() + width * (float) index).withWidth (width).withSizeKeepingCentre (42.0f, 28.0f).toNearestInt();
 }
 
 juce::Rectangle<int> DeckRack::screenArea() const { return displayColumn().withHeight (screenHeight).toNearestInt(); }
@@ -243,11 +248,12 @@ void DeckRack::paint (juce::Graphics& g)
     // The badge, as on PR7-G's and PR7-I's units: PARAGON over the PR7-T mark, what it is printed in red.
     PedalBody::paintBadge (g, badgeColumn().withHeight (88.0f).translated (2.0f, 2.0f), "TURNTABLE INSTRUMENT");
     {
-        const auto a = pageKeyCell (0).toFloat(), b = pageKeyCell (1).toFloat(), c = pageKeyCell (2).toFloat();
-        bracket (g, a, c, "PAGE");
-        stamped (g, "DECK", a.translated (0.0f, a.getHeight() + 2.0f).withHeight (12.0f).expanded (10.0f, 0.0f), 7.5f);
-        stamped (g, "FADER", b.translated (0.0f, b.getHeight() + 2.0f).withHeight (12.0f).expanded (10.0f, 0.0f), 7.5f);
-        stamped (g, "CUES", c.translated (0.0f, c.getHeight() + 2.0f).withHeight (12.0f).expanded (10.0f, 0.0f), 7.5f);
+        const auto a = pageKeyCell (0).toFloat(), b = pageKeyCell (1).toFloat(), c = pageKeyCell (2).toFloat(), d = pageKeyCell (3).toFloat();
+        bracket (g, a, d, "PAGE");
+        stamped (g, "DECK", a.translated (0.0f, a.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
+        stamped (g, "FADER", b.translated (0.0f, b.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
+        stamped (g, "CUES", c.translated (0.0f, c.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
+        stamped (g, "SCRATCH", d.translated (0.0f, d.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
     }
 
     // The printed lines between the sections.
@@ -273,23 +279,27 @@ void DeckRack::paint (juce::Graphics& g)
     // The page's name, over it.
     auto title = pageArea().withY (content().getY()).withHeight (titleHeight);
     g.setFont (font (15.0f, juce::Font::bold | juce::Font::italic));
-    ParagonLookAndFeel::drawStampedText (g, page == Page::deck ? "DECK" : page == Page::fader ? "FADER" : "CUES",
-                                         title.removeFromLeft (90.0f), juce::Justification::centredLeft, Finish::ink());
+    ParagonLookAndFeel::drawStampedText (g, page == Page::deck ? "DECK" : page == Page::fader ? "FADER" : page == Page::cues ? "CUES" : "SCRATCH",
+                                         title.removeFromLeft (page == Page::scratch ? 110.0f : 90.0f), juce::Justification::centredLeft, Finish::ink());
     g.setColour (Finish::printedRed());
     g.setFont (font (8.0f));
     g.drawText (page == Page::deck ? "THE TURNTABLE: ITS SPEED, ITS MOTOR, THE HAND, THE NEEDLE"
               : page == Page::fader ? "THE CROSSFADER: HOW IT CUTS, TRANSFORM'S RATE, HAMSTER"
-                                    : "WHERE THE DROPS LAND, AND THE DECK'S KEYS",
+              : page == Page::cues ? "WHERE THE DROPS LAND, AND THE DECK'S KEYS"
+                                   : "THE SCRATCH LIBRARY: A TECHNIQUE A KEY, IN TIME WITH THE SONG",
                 title, juce::Justification::centredLeft, false);
 
     if (page == Page::fader)
         paintFaderScreen (g);
-    if (page == Page::cues)
+    if (page == Page::cues || page == Page::scratch)
     {
         const auto cell = menuCell().toFloat();
-        stamped (g, "KEYS", cell.withHeight (12.0f).translated (0.0f, -15.0f), 8.0f, juce::Justification::centredLeft);
+        stamped (g, page == Page::cues ? "KEYS" : "SCRATCH KEYS", cell.withHeight (12.0f).translated (0.0f, -15.0f).withWidth (160.0f), 8.0f, juce::Justification::centredLeft);
         LedDisplay::paintScreen (g, cell, screenSize);
-        paintKeyMap (g);
+        if (page == Page::cues)
+            paintKeyMap (g);
+        else
+            paintScratchList (g);
     }
 
     // DECK OUT: its name, the status bar (off while the deck is), the meter screen.
@@ -367,6 +377,71 @@ void DeckRack::paintKeyMap (juce::Graphics& g)
     LedDisplay::paintGlassOverlay (g, glass, screenSize);
 }
 
+void DeckRack::setScratchList (const juce::StringArray& lines, int playing)
+{
+    if (lines == scratchList && playing == scratchPlaying)
+        return;
+    scratchList = lines;
+    scratchPlaying = playing;
+    if (page == Page::scratch)
+        repaint (keyMapArea());
+}
+
+// The techniques in two columns of six on their screen; each line a place to click.
+juce::Rectangle<float> DeckRack::scratchRow (int index) const
+{
+    auto text = keyMapArea().toFloat().reduced (10.0f, 7.0f).withTrimmedTop (13.0f);
+    const auto rows = 6;
+    const auto rowHeight = text.getHeight() / (float) rows;
+    const auto columnWidth = text.getWidth() / 2.0f;
+    return { text.getX() + columnWidth * (float) (index / rows), text.getY() + rowHeight * (float) (index % rows), columnWidth, rowHeight };
+}
+
+int DeckRack::scratchAt (juce::Point<int> point) const
+{
+    if (page != Page::scratch)
+        return -1;
+    for (int i = 0; i < scratchList.size(); ++i)
+        if (scratchRow (i).contains (point.toFloat()))
+            return i;
+    return -1;
+}
+
+void DeckRack::paintScratchList (juce::Graphics& g)
+{
+    const auto glass = LedDisplay::paintScreen (g, keyMapArea().toFloat(), screenSize);
+    g.setColour (orange.withAlpha (0.6f));
+    g.setFont (font (8.0f));
+    g.drawText ("THE TECHNIQUES: CLICK ONE TO PLAY IT", glass.reduced (10.0f, 7.0f).withHeight (10.0f), juce::Justification::centredLeft, false);
+    for (int i = 0; i < scratchList.size(); ++i)
+    {
+        const auto row = scratchRow (i);
+        if (i == scratchPlaying)
+        {
+            g.setColour (orange.withAlpha (0.28f));
+            g.fillRoundedRectangle (row.reduced (0.0f, 1.0f).withTrimmedRight (6.0f), 2.0f);
+        }
+        g.setColour (i == scratchPlaying ? juce::Colour (0xffffd0a0) : orange);
+        g.setFont (font (juce::jmin (9.5f, row.getHeight() - 2.0f)));
+        g.drawText (scratchList[i], row.withTrimmedLeft (3.0f), juce::Justification::centredLeft, false);
+    }
+    LedDisplay::paintGlassOverlay (g, glass, screenSize);
+}
+
+void DeckRack::mouseDown (const juce::MouseEvent& e)
+{
+    scratchClicked = scratchAt (e.getPosition());
+    if (scratchClicked >= 0 && onScratchPressed != nullptr)
+        onScratchPressed (scratchClicked, true);
+}
+
+void DeckRack::mouseUp (const juce::MouseEvent&)
+{
+    if (scratchClicked >= 0 && onScratchPressed != nullptr)
+        onScratchPressed (scratchClicked, false);
+    scratchClicked = -1;
+}
+
 void DeckRack::paintMeter (juce::Graphics& g)
 {
     // A ladder of LED bars, -60 to +6 dB, the top two (over 0 dB) paler (PR7-I's).
@@ -395,7 +470,7 @@ void DeckRack::paintMeter (juce::Graphics& g)
 void DeckRack::paintOverChildren (juce::Graphics& g)
 {
     // CUES: the glass over the KEYS menu's screen (its text sits behind it, as on any of the unit's screens).
-    if (page == Page::cues)
+    if (page == Page::cues || page == Page::scratch)
         LedDisplay::paintGlassOverlay (g, menuCell().toFloat().reduced (3.0f), screenSize);
     Finish::paintAs (std::nullopt);
 }

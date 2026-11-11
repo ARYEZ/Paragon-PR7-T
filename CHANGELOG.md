@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.5.0
+
+**THE SCRATCH LIBRARY: a scratch on every key, in time with your song.**
+
+- **Twelve techniques, one per key**, on a block of their own (**SCRATCH KEYS**: C2 by default, the octave above the
+  deck's own keys; OFF gives the keys back to the synth): **BABY** (C), **FORWARD** (C#), **BACKWARD** (D), **CHIRP**
+  (D#), **STAB** (E), **DRAG** (F), **TEAR** (F#), **SCRIBBLE** (G), **TRANSFORMER** (G#), **FLARE** (A),
+  **2-CLICK FLARE** (A#), **CRAB** (B).
+- Each is a hand on the record and the crossfader together: the record pushed and pulled (BABY forward and back;
+  TEAR back in two moves with a stop; SCRIBBLE tiny tense strokes; DRAG a slow push) while the fader cuts it (FORWARD
+  heard on the push, BACKWARD on the pull, CHIRP each stroke's tail cut, FLARE one click shut in each stroke, the
+  2-CLICK FLARE two, CRAB four quick taps, TRANSFORMER chopping 1/32s). Our own shapes, from how these scratches are
+  generally described; tell me if one should feel different.
+- **In time with your song**: each takes a set number of beats at the song's tempo (BABY, FORWARD, BACKWARD, CHIRP,
+  STAB and SCRIBBLE half a beat; DRAG, TEAR, the FLAREs and CRAB a beat; TRANSFORMER two). **RATE** plays them at half,
+  normal or double speed.
+- **How hard you hit the key** sets the stroke: soft a short one, hard the full **REACH** (40% to 100% of it).
+- **Hold the key and it repeats**; let go and it finishes the stroke it's on, then the motor takes the record on (or,
+  with the motor stopped, it stays where the scratch left it: back where it started).
+- Its cuts go through the crossfader as yours do (CURVE, and the 1 ms ramp that never clicks).
+- **MOD HAND** (off by default, since the synth uses the mod wheel): the mod wheel as a hand on the record. Unlike the
+  pitch wheel it stays where you leave it; the whole wheel moves the record twice REACH. Still for a moment, the hand
+  lets go, and takes the record again from there when you move it.
+- **A SCRATCH page on the rack** (the fourth PAGE key): REACH, RATE, MOD HAND, SCRATCH KEYS, and a screen of the
+  techniques with their keys, the one playing lit. **Click a technique to play it** (held, it repeats).
+
 ## 0.4.0
 
 **THE CROSSFADER, and THE DECK's controls on a rack unit like PR7-I's.**

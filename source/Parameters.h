@@ -538,6 +538,13 @@ namespace ParamIDs
     inline constexpr auto deckCurve     = "deckCurve";       // 0 to 1: a smooth mixing fade to a scratch cut
     inline constexpr auto deckHamster   = "deckHamster";     // the fader turned round
     inline constexpr auto deckTransform = "deckTransform";   // choice: TRANSFORM's rate, deck::transformNames
+    // THE SCRATCH LIBRARY (0.5.0, version hint 46).
+    inline constexpr auto deckScratchKeys  = "deckScratchKeys";    // choice: OFF, or the techniques' 12 keys' octave (index i >= 1: from note 12 i)
+    inline constexpr auto deckScratchReach = "deckScratchReach";   // turns: a full-velocity stroke
+    inline constexpr auto deckScratchRate  = "deckScratchRate";    // choice: deck::scratchRateNames
+    inline constexpr auto deckModHand      = "deckModHand";        // the mod wheel a hand on the record
+    inline const juce::StringArray deckScratchKeyNames { "OFF", "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7" };   // by index: only append
+    inline constexpr int deckScratchKeysDefault = 3;   // C2 (note 36): the octave above the deck's own keys
 
     // THE INSERT BUSES (stage 7d, version hint 19): A to D, each "ins1"... "ins4" plus a setting below: PR7-G's
     // DRIVE and GLITCH (their IDs after the prefix, capitalised), then MOD and LO-FI as above, then the bus's SENDS.

@@ -292,6 +292,38 @@ namespace deck
         return std::sin (x / open * juce::MathConstants<float>::halfPi);
     }
 
+    double scratchBeats (int technique) noexcept
+    {
+        constexpr double beats[] = { 0.5, 0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 0.5, 2.0, 1.0, 1.0, 1.0 };
+        return beats[juce::jlimit (0, numScratches - 1, technique)];
+    }
+
+    ScratchShape scratchAt (int technique, double p) noexcept
+    {
+        p = juce::jlimit (0.0, 1.0, p);
+        constexpr auto pi = juce::MathConstants<double>::pi;
+        const auto ease = [] (double x) { return (1.0 - std::cos (pi * juce::jlimit (0.0, 1.0, x))) * 0.5; };   // 0 to 1, smoothly
+        const auto stroke = (1.0 - std::cos (2.0 * pi * p)) * 0.5;   // forward to the full length and back, smoothly
+        const auto half = std::fmod (2.0 * p, 1.0);                   // how far through this half (the push or the pull)
+        switch (technique)
+        {
+            case 0:  return { stroke, true };                                   // BABY: forward and back, the fader open
+            case 1:  return { stroke, p < 0.5 };                                // FORWARD: heard pushed, cut pulled back
+            case 2:  return { stroke, p >= 0.5 };                               // BACKWARD: cut pushed, heard pulled back
+            case 3:  return { stroke, half < 0.55 };                            // CHIRP: each stroke's tail cut short
+            case 4:  return { p < 0.2 ? ease (p / 0.2) : p < 0.5 ? 1.0 : ease (1.0 - (p - 0.5) / 0.5), p < 0.15 };   // STAB: a hard push, its start heard
+            case 5:  return { p < 0.75 ? p / 0.75 : ease (1.0 - (p - 0.75) / 0.25), p < 0.75 };   // DRAG: a slow push heard, a quick pull cut
+            case 6:  return { p < 0.3 ? ease (p / 0.3) : p < 0.5 ? 1.0 - 0.5 * ease ((p - 0.3) / 0.2)   // TEAR: pushed, then pulled back
+                                       : p < 0.65 ? 0.5 : 0.5 * (1.0 - ease ((p - 0.65) / 0.35)), true };   // in two moves, a stop between
+            case 7:  return { 0.12 * (1.0 - std::cos (2.0 * pi * 8.0 * p)) * 0.5, true };   // SCRIBBLE: eight tiny tense strokes
+            case 8:  return { stroke, std::fmod (p * 16.0, 1.0) < 0.5 };        // TRANSFORMER: a slow stroke, the fader chopping 1/32s
+            case 9:  return { stroke, ! (half > 0.44 && half < 0.56) };         // FLARE: open, one click shut in each stroke
+            case 10: return { stroke, ! ((half > 0.27 && half < 0.37) || (half > 0.63 && half < 0.73)) };   // 2-CLICK FLARE
+            case 11: return { stroke, half < 0.6 && std::fmod (half * 4.0 / 0.6, 1.0) < 0.5 };   // CRAB: four quick taps on each stroke
+            default: return {};
+        }
+    }
+
     //==============================================================================
     Deck::Deck()
     {
@@ -310,7 +342,10 @@ namespace deck
     void Deck::reset()
     {
         position = speed = platter = 0.0;
-        motorOn = spinning = holdKey = cutKey = transformKey = false;
+        motorOn = spinning = holdKey = cutKey = transformKey = scratchHeld = false;
+        scratchTechnique = -1;
+        scratchOpen = true;
+        shownScratch = -1;
         faderNow = 1.0f;
         shownFader = 1.0f;
         hand = Hand::none;
@@ -368,6 +403,23 @@ namespace deck
 
     void Deck::handleMidi (const juce::MidiMessage& message, const Record* record, const Settings& settings) noexcept
     {
+        if (message.isController() && message.getControllerNumber() == 1)
+        {
+            // MOD HAND: the mod wheel moves the record from where it takes it (it stays where it's left: the hand lets
+            // go once it's been still a moment, and takes the record again from there when it moves).
+            const auto value = (float) message.getControllerValue() / 127.0f;
+            if (settings.modHand && std::abs (value - modWheel) > 1.0e-6f && hand != Hand::mouse)
+            {
+                if (hand != Hand::modWheel)
+                {
+                    grab (Hand::modWheel);
+                    modWheelAtGrab = modWheel;
+                }
+                modStillFor = 0;
+            }
+            modWheel = value;
+            return;
+        }
         if (message.isPitchWheel())
         {
             wheel = juce::jlimit (-1.0f, 1.0f, (float) (message.getPitchWheelValue() - 8192) / 8191.0f);
@@ -381,7 +433,25 @@ namespace deck
         }
         const auto key = message.getNoteNumber() - settings.firstKey;
         if (key < 0 || key >= numKeys)
+        {
+            // THE SCRATCH LIBRARY's keys: a technique starts (its stroke as long as the key is hard), or its key lets go.
+            const auto technique = message.getNoteNumber() - settings.firstScratchKey;
+            if (settings.firstScratchKey < 0 || technique < 0 || technique >= numScratches)
+                return;
+            if (message.isNoteOn() && hand != Hand::mouse)
+            {
+                grab (Hand::scratch);
+                scratchTechnique = technique;
+                scratchHeld = true;
+                scratchPhase = 0.0;
+                scratchSettling = 0;
+                scratchOpen = true;
+                scratchStroke = (double) settings.scratchReach * (0.4 + 0.6 * (double) message.getFloatVelocity());
+            }
+            else if (message.isNoteOff() && technique == scratchTechnique)
+                scratchHeld = false;   // it finishes the stroke it's on
             return;
+        }
         if (message.isNoteOff())
         {
             if (key == (int) Key::hold)
@@ -446,6 +516,16 @@ namespace deck
         const auto beatsPerSample = juce::jmax (1.0, settings.bpm) / 60.0 / hostRate;
         const auto turnSamples = secondsPerTurn * recordRate;
         const auto centredLetGo = (int) (0.05 * hostRate);
+        const auto modLetGo = (int) (0.15 * hostRate);
+        const auto scratchSettle = (int) (0.03 * hostRate);
+        // The key blocks moved (KEYS or SCRATCH KEYS changed): the held keys' note-offs will go elsewhere, so let go.
+        if (settings.firstKey != keysWere || settings.firstScratchKey != scratchKeysWere)
+        {
+            if (keysWere != -1 || scratchKeysWere != -1)
+                releaseKeys();
+            keysWere = settings.firstKey;
+            scratchKeysWere = settings.firstScratchKey;
+        }
         const auto thumpStep = 2.0 * juce::MathConstants<double>::pi * 55.0 / hostRate;
         const auto thumpDecay = (float) std::exp (-1.0 / (0.035 * hostRate));
         const auto crackleDecay = (float) std::exp (-1.0 / (0.15 * hostRate));
@@ -480,7 +560,40 @@ namespace deck
             if (hand != Hand::none)
             {
                 // A hand moves the record: it goes where the hand puts it, and its speed is how fast that is.
-                const auto turns = hand == Hand::mouse ? (double) mouseTurns.load (std::memory_order_relaxed) : (double) wheel * settings.reachTurns;
+                auto turns = 0.0;
+                if (hand == Hand::mouse)
+                    turns = (double) mouseTurns.load (std::memory_order_relaxed);
+                else if (hand == Hand::wheel)
+                    turns = (double) wheel * settings.reachTurns;
+                else if (hand == Hand::modWheel)
+                    turns = (double) (modWheel - modWheelAtGrab) * 2.0 * settings.reachTurns;   // the whole wheel: twice REACH
+                else
+                {
+                    // A technique: its stroke and its fader where it is now; on through it at the song's tempo (times
+                    // RATE); at its end again while its key's held, else the hand lets go and the motor takes it on.
+                    const auto length = scratchBeats (scratchTechnique);
+                    const auto shape = scratchAt (scratchTechnique, scratchPhase / length);
+                    turns = shape.hand * scratchStroke;
+                    scratchOpen = shape.open;
+                    scratchPhase += beatsPerSample * scratchRates[juce::jlimit (0, (int) std::size (scratchRates) - 1, settings.scratchRate)];
+                    if (scratchPhase >= length)
+                    {
+                        if (scratchHeld)
+                            scratchPhase -= length;
+                        else
+                        {
+                            // Done: the hand stays 30 ms at the stroke's end (where it took the record) while its
+                            // smoothing settles, so the record is back home before the hand lets go.
+                            scratchPhase = length;
+                            if (++scratchSettling >= scratchSettle)
+                            {
+                                hand = Hand::none;
+                                scratchTechnique = -1;
+                                scratchOpen = true;
+                            }
+                        }
+                    }
+                }
                 const auto target = handAnchor + turns * turnSamples;
                 handSmooth1 += handFollow * (target - handSmooth1);
                 handSmooth2 += handFollow * (handSmooth1 - handSmooth2);
@@ -493,6 +606,8 @@ namespace deck
                     if (wheelCentredFor >= centredLetGo)
                         hand = Hand::none;   // the wheel back at its centre a moment: the hand lets go
                 }
+                else if (hand == Hand::modWheel && ++modStillFor >= modLetGo)
+                    hand = Hand::none;       // the mod wheel still a moment: the hand lets go where it is
             }
             else
             {
@@ -566,7 +681,8 @@ namespace deck
                 if (std::fmod (beat, transformCycle) >= 0.5 * transformCycle)
                     flipped = ! flipped;
             }
-            const auto faderTarget = flipped ? faderFlipped : faderSet;
+            // A technique's own cuts: the fader shut while it has it cut.
+            const auto faderTarget = (hand == Hand::scratch && ! scratchOpen) ? 0.0f : flipped ? faderFlipped : faderSet;
             faderNow = faderNow < faderTarget ? juce::jmin (faderTarget, faderNow + faderStep) : juce::jmax (faderTarget, faderNow - faderStep);
 
             const auto heardL = outL * level * faderNow, heardR = outR * level * faderNow;
@@ -583,6 +699,7 @@ namespace deck
         shownSpeed.store ((float) speed, std::memory_order_relaxed);
         shownMotor.store (motorOn, std::memory_order_relaxed);
         shownFader.store (faderNow, std::memory_order_relaxed);
+        shownScratch.store (hand == Hand::scratch ? scratchTechnique : -1, std::memory_order_relaxed);
         for (auto was = peak.load (std::memory_order_relaxed); blockPeak > was && ! peak.compare_exchange_weak (was, blockPeak, std::memory_order_relaxed);) {}
     }
 }

@@ -1216,16 +1216,25 @@ void ParagonX1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     if (isOn (ParamIDs::deckOn))
     {
         const auto first = 12 * (1 + juce::jlimit (0, ParamIDs::deckKeyNames.size() - 1, juce::roundToInt (param (ParamIDs::deckKeys))));
+        // 0.5.0: the scratch library's 12 keys too (unless OFF), and the mod wheel while it's MOD HAND.
+        const auto scratchKeys = juce::jlimit (0, ParamIDs::deckScratchKeyNames.size() - 1, juce::roundToInt (param (ParamIDs::deckScratchKeys)));
+        const auto firstScratch = scratchKeys == 0 ? -1 : 12 * scratchKeys;
+        const auto modHand = isOn (ParamIDs::deckModHand);
         synthMidi.clear();
         for (const auto metadata : keyboardMidi)
         {
             const auto message = metadata.getMessage();
+            const auto note = message.isNoteOnOrOff() ? message.getNoteNumber() : -1;
             const auto forDeck = message.isPitchWheel()
-                              || ((message.isNoteOnOrOff()) && message.getNoteNumber() >= first && message.getNoteNumber() < first + deck::numKeys);
+                              || (modHand && message.isController() && message.getControllerNumber() == 1)
+                              || (note >= first && note < first + deck::numKeys)
+                              || (firstScratch >= 0 && note >= firstScratch && note < firstScratch + deck::numScratches);
             (forDeck ? deckMidi : synthMidi).addEvent (message, metadata.samplePosition);
         }
         keyboardMidi.swapWith (synthMidi);
     }
+    else
+        deck.releaseKeys();   // off: its held keys' note-offs go to the synth now, so it lets go of them
 
     // Some hosts occasionally send more samples than they promised in
     // prepareToPlay; work through an oversized block in promised-size pieces.
@@ -1337,6 +1346,11 @@ deck::Settings ParagonX1AudioProcessor::getDeckSettings() const noexcept
     s.transformRate = juce::jlimit (0, deck::transformNames.size() - 1, juce::roundToInt (param (ParamIDs::deckTransform)));
     s.bpm = juce::jmax (1.0, hostBpm.load());
     s.ppq = hostPpq;   // (the block's start; processChunk moves it to each piece's)
+    const auto scratchKeys = juce::jlimit (0, ParamIDs::deckScratchKeyNames.size() - 1, juce::roundToInt (param (ParamIDs::deckScratchKeys)));
+    s.firstScratchKey = scratchKeys == 0 ? -1 : 12 * scratchKeys;
+    s.scratchReach = param (ParamIDs::deckScratchReach);
+    s.scratchRate = juce::jlimit (0, deck::scratchRateNames.size() - 1, juce::roundToInt (param (ParamIDs::deckScratchRate)));
+    s.modHand = isOn (ParamIDs::deckModHand);
     return s;
 }
 

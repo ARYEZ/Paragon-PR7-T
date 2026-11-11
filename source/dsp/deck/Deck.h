@@ -72,6 +72,23 @@ namespace deck
     // cut (fully open by 1% of the travel, as a scratch mixer's is); HAMSTER turns the fader round.
     float faderGain (float fader, float curve, bool hamster) noexcept;
 
+    // THE SCRATCH LIBRARY (0.5.0, stage 4): the turntablist's techniques, each a hand's stroke on the record and the
+    // crossfader's cuts, timed in beats (synced to the song's tempo), one on each key of its own 12-key block. Our own
+    // shapes, from how these scratches are generally described: the record pushed forward and pulled back (the
+    // stroke), the fader open or cut at each moment of it.
+    inline const juce::StringArray scratchNames { "BABY", "FORWARD", "BACKWARD", "CHIRP", "STAB", "DRAG", "TEAR", "SCRIBBLE",
+                                                  "TRANSFORMER", "FLARE", "2-CLICK FLARE", "CRAB" };
+    inline constexpr int numScratches = 12;
+    inline const juce::StringArray scratchRateNames { "1/2x", "1x", "2x" };   // RATE: by index, only append
+    inline constexpr double scratchRates[] = { 0.5, 1.0, 2.0 };
+    struct ScratchShape
+    {
+        double hand = 0.0;   // where the hand has the record: 0 where it took it, 1 the stroke's full length forward
+        bool open = true;    // the crossfader open (else cut)
+    };
+    double scratchBeats (int technique) noexcept;                 // how long one takes, in beats
+    ScratchShape scratchAt (int technique, double phase) noexcept;   // at `phase` (0 to 1) through it
+
     struct Settings
     {
         float pitch = 0.0f;              // the pitch fader: -0.16 to +0.16 (+-16%)
@@ -92,6 +109,11 @@ namespace deck
         int transformRate = 1;           // transformNames: 1/16
         double bpm = 120.0;              // the song's tempo, for TRANSFORM
         double ppq = -1.0;               // where the song is at the block's start, in beats (-1: stopped; TRANSFORM runs free)
+        // THE SCRATCH LIBRARY (0.5.0).
+        int firstScratchKey = 36;        // the techniques' 12 keys from this note (-1: off); the deck's own keys win
+        float scratchReach = 0.25f;      // a full-velocity stroke, in turns (softer keys: down to 40% of it)
+        int scratchRate = 1;             // scratchRateNames: 1x
+        bool modHand = false;            // the mod wheel is a hand on the record (it stays where it's left)
 
         float baseSpeed() const noexcept { return (1.0f + pitch) * (speed45 ? 1.35f : 1.0f); }
     };
@@ -114,11 +136,16 @@ namespace deck
         // it has been turned since it was grabbed (forward positive). Read at the start of each block.
         void setMouseHand (bool holding, float turns) noexcept { mouseTurns = turns; mouseHolding = holding; }
 
+        // Lets go of every held key (HOLD, CUT, TRANSFORM, a technique): their note-offs won't come to the deck (it's
+        // off, or its keys moved). Audio thread.
+        void releaseKeys() noexcept { holdKey = cutKey = transformKey = scratchHeld = false; }
+
         // What the page shows (any thread).
         double getPositionSeconds() const noexcept { return shownPosition.load (std::memory_order_relaxed); }
         float getSpeed() const noexcept { return shownSpeed.load (std::memory_order_relaxed); }   // times the sample's own speed
         bool isMotorOn() const noexcept { return shownMotor.load (std::memory_order_relaxed); }
         float getFaderGain() const noexcept { return shownFader.load (std::memory_order_relaxed); }   // the crossfader's, now
+        int getScratch() const noexcept { return shownScratch.load (std::memory_order_relaxed); }      // the technique playing (-1: none)
         // The deck's own loudest sample (after LEVEL and the crossfader) since this was last asked: the rack's meter.
         float takePeak() noexcept { return peak.exchange (0.0f, std::memory_order_relaxed); }
 
@@ -130,7 +157,7 @@ namespace deck
         static float read (const Record&, int channel, double position, double rate) noexcept;
 
     private:
-        enum class Hand { none, wheel, mouse };
+        enum class Hand { none, wheel, mouse, scratch, modWheel };
         void handleMidi (const juce::MidiMessage&, const Record*, const Settings&) noexcept;
         void dropNeedle (double toSamples, float velocity) noexcept;
         void grab (Hand) noexcept;
@@ -150,6 +177,16 @@ namespace deck
         int wheelCentredFor = 0;               // samples the wheel has sat at its centre (it lets go after 50 ms)
         bool holdKey = false;                  // HOLD: a hand holding the record still
         bool cutKey = false, transformKey = false;   // the crossfader's keys, held
+        // A technique from the library playing: which, its key held (it repeats), how far through (beats), its stroke
+        // (turns), and the fader as it has it.
+        int scratchTechnique = -1;
+        bool scratchHeld = false, scratchOpen = true;
+        double scratchPhase = 0.0, scratchStroke = 0.0;
+        int scratchSettling = 0;               // samples since it ended: the hand stays a moment, till the record's home
+        int keysWere = -1, scratchKeysWere = -1;   // where the key blocks were (moved: the held keys let go)
+        // MOD HAND: the mod wheel's place (0 to 1), where it was when it took the record, how long it's been still.
+        float modWheel = 0.0f, modWheelAtGrab = 0.0f;
+        int modStillFor = 0;
         double transformBeat = 0.0;            // TRANSFORM running free (the song stopped): beats since it was pressed
         float faderNow = 1.0f;                 // the crossfader's gain, moving to where it's set in straight 1 ms lines
         std::atomic<bool> mouseHolding { false };   // set by the page (the message thread), read by the audio thread
@@ -175,5 +212,6 @@ namespace deck
         std::atomic<bool> shownMotor { false };
         std::atomic<float> shownFader { 1.0f };
         std::atomic<float> peak { 0.0f };
+        std::atomic<int> shownScratch { -1 };
     };
 }

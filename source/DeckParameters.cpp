@@ -69,6 +69,17 @@ void addDeckParameters (juce::AudioProcessorValueTreeState::ParameterLayout& lay
         layout.add (std::make_unique<juce::AudioParameterBool> (v45 (ParamIDs::deckHamster), "Deck Hamster", d.hamster));
         layout.add (std::make_unique<juce::AudioParameterChoice> (v45 (ParamIDs::deckTransform), "Deck Transform", deck::transformNames, d.transformRate));
     }
+    // THE SCRATCH LIBRARY (0.5.0): its own hint, 46.
+    {
+        const auto v46 = [] (const char* id) { return juce::ParameterID { id, 46 }; };
+        layout.add (std::make_unique<juce::AudioParameterChoice> (v46 (ParamIDs::deckScratchKeys), "Deck Scratch Keys",
+                                                                  ParamIDs::deckScratchKeyNames, ParamIDs::deckScratchKeysDefault));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v46 (ParamIDs::deckScratchReach), "Deck Scratch Reach",
+            juce::NormalisableRange<float> { 0.05f, 1.0f, 0.01f }, d.scratchReach,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float turns, int) { return juce::String (turns, 2) + " turn"; })));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (v46 (ParamIDs::deckScratchRate), "Deck Scratch Rate", deck::scratchRateNames, d.scratchRate));
+        layout.add (std::make_unique<juce::AudioParameterBool> (v46 (ParamIDs::deckModHand), "Deck Mod Hand", d.modHand));
+    }
     for (int cue = 0; cue < 4; ++cue)
         layout.add (makeFloat (ParamIDs::deckCues[cue], "Deck Cue " + juce::String (cue + 1), { 0.0f, 1.0f, 0.001f },
                                d.cues[(size_t) cue], [] (float x, int) { return juce::String (x * 100.0f, 1) + "%"; }));

@@ -711,7 +711,8 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
     for (const auto* id : { ParamIDs::deckPitch, ParamIDs::deckSpeed, ParamIDs::deckStart, ParamIDs::deckBrake, ParamIDs::deckSpin,
                             ParamIDs::deckSpinTime, ParamIDs::deckReach, ParamIDs::deckNeedle, ParamIDs::deckFader, ParamIDs::deckCurve,
                             ParamIDs::deckTransform, ParamIDs::deckHamster, ParamIDs::deckKeys, ParamIDs::deckLevel,
-                            ParamIDs::deckCues[0], ParamIDs::deckCues[1], ParamIDs::deckCues[2], ParamIDs::deckCues[3] })
+                            ParamIDs::deckCues[0], ParamIDs::deckCues[1], ParamIDs::deckCues[2], ParamIDs::deckCues[3],
+                            ParamIDs::deckScratchKeys, ParamIDs::deckScratchReach, ParamIDs::deckScratchRate, ParamIDs::deckModHand })
     {
         INFO (id);
         CHECK (ids.contains (id));
@@ -722,7 +723,7 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
 
     // Each page: its controls shown, inside the unit, none on top of another.
     const auto face = rack.getLocalBounds().reduced (20);
-    for (const auto pageKey : { DeckRack::Page::deck, DeckRack::Page::fader, DeckRack::Page::cues })
+    for (const auto pageKey : { DeckRack::Page::deck, DeckRack::Page::fader, DeckRack::Page::cues, DeckRack::Page::scratch })
     {
         rack.getPageKey (pageKey).onClick();
         CHECK (rack.getPage() == pageKey);
@@ -740,8 +741,9 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
             }
         INFO ("page " << (int) pageKey << ": " << shownIds.joinIntoString (", "));
         CHECK (shownIds.contains (ParamIDs::deckLevel));   // LEVEL on every page (DECK OUT)
-        CHECK (shownIds.contains (pageKey == DeckRack::Page::deck ? ParamIDs::deckPitch : pageKey == DeckRack::Page::fader ? ParamIDs::deckFader : ParamIDs::deckCues[0]));
-        CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : 6));
+        CHECK (shownIds.contains (pageKey == DeckRack::Page::deck ? ParamIDs::deckPitch : pageKey == DeckRack::Page::fader ? ParamIDs::deckFader
+                                  : pageKey == DeckRack::Page::cues ? ParamIDs::deckCues[0] : ParamIDs::deckScratchReach));
+        CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : pageKey == DeckRack::Page::cues ? 6 : 5));
     }
 
     // ON is the deck's switch.
@@ -775,4 +777,237 @@ TEST_CASE ("THE CROSSFADER on the page: dragging it moves FADER, and the deck is
     CHECK (rms (cut, (size_t) (0.01 * sampleRate), cut.size()) == 0.0);
     page.refreshForTest();
     CHECK (p.processor.getDeck().getFaderGain() == 0.0f);
+}
+
+//==============================================================================
+// THE SCRATCH LIBRARY (0.5.0, stage 4).
+namespace
+{
+    // Fader openings (cut to open) in one run through a technique, from its shape.
+    int shapeOpenings (int technique)
+    {
+        int count = 0;
+        bool open = deck::scratchAt (technique, 0.0).open;
+        for (int k = 1; k < 20000; ++k)   // (not phase 1: that's the next time round's start)
+        {
+            const auto now = deck::scratchAt (technique, k / 20000.0).open;
+            count += now && ! open ? 1 : 0;
+            open = now;
+        }
+        return count;
+    }
+
+    void scratchKey (Turntable& t, int technique, float velocity, bool down = true)
+    {
+        const auto note = t.settings.firstScratchKey + technique;
+        t.pending.addEvent (down ? juce::MidiMessage::noteOn (1, note, velocity) : juce::MidiMessage::noteOff (1, note), 0);
+    }
+}
+
+TEST_CASE ("THE SCRATCH LIBRARY's shapes: each starts and ends where the hand took the record, its cuts as described", "[deck][scratch]")
+{
+    REQUIRE (deck::scratchNames.size() == deck::numScratches);
+    for (int t = 0; t < deck::numScratches; ++t)
+    {
+        INFO (deck::scratchNames[t]);
+        CHECK (deck::scratchAt (t, 0.0).hand == 0.0);
+        CHECK_THAT (deck::scratchAt (t, 1.0).hand, WithinAbs (0.0, 1.0e-9));
+        for (int k = 0; k <= 1000; ++k)
+        {
+            const auto h = deck::scratchAt (t, k / 1000.0).hand;
+            CHECK (h >= -1.0e-9);
+            CHECK (h <= 1.0 + 1.0e-9);
+        }
+        CHECK (deck::scratchBeats (t) > 0.0);
+    }
+    // The fader's cuts: none on a BABY; FORWARD and BACKWARD heard on one half each; a FLARE's one click in each
+    // stroke (two strokes: two openings after a click), a 2-CLICK FLARE's two, a CRAB's four taps a stroke, a
+    // TRANSFORMER's sixteen chops.
+    CHECK (shapeOpenings (0) == 0);
+    CHECK (deck::scratchAt (1, 0.25).open);
+    CHECK_FALSE (deck::scratchAt (1, 0.75).open);
+    CHECK_FALSE (deck::scratchAt (2, 0.25).open);
+    CHECK (deck::scratchAt (2, 0.75).open);
+    CHECK (shapeOpenings (9) == 2);
+    CHECK (shapeOpenings (10) == 4);
+    CHECK (shapeOpenings (11) == 2 * 4 - 1);   // (it starts on a tap: the first isn't an opening)
+    CHECK (shapeOpenings (8) == 16 - 1);       // (likewise its first chop)
+    // TEAR stops half way back; SCRIBBLE's strokes are small.
+    CHECK_THAT (deck::scratchAt (6, 0.57).hand, WithinAbs (0.5, 1.0e-9));
+    for (int k = 0; k <= 100; ++k)
+        CHECK (deck::scratchAt (7, k / 100.0).hand <= 0.12 + 1.0e-9);
+}
+
+TEST_CASE ("THE SCRATCH LIBRARY in the deck: BABY pushes the record a stroke forward and back in half a beat of the song", "[deck][scratch]")
+{
+    for (const auto bpm : { 120.0, 60.0 })
+    {
+        Turntable t (sineRecord (1000.0));
+        t.settings.bpm = bpm;
+        t.settings.scratchReach = 0.25f;   // a quarter turn: 0.45 s of the record at full velocity
+        t.play (0.5);                      // (still: the motor off, the needle at the start)
+        t.settings.cues[0] = 0.3f;
+        t.key (deck::Key::drop1);          // somewhere in the middle (the motor comes on; HOLD keeps it still)
+        t.key (deck::Key::hold);
+        t.play (0.3);
+        const auto start = t.deck.getPositionSeconds();
+        scratchKey (t, 0, 1.0f);
+        scratchKey (t, 0, 1.0f, false);    // let go at once: it plays its one stroke through
+        const auto cycle = 0.5 * 60.0 / bpm;
+        double furthest = 0.0;
+        float fastestForward = 0.0f, fastestBack = 0.0f;
+        for (int b = 0; b < (int) (cycle * sampleRate / blockSize); ++b)
+        {
+            t.play (blockSize / sampleRate);
+            furthest = juce::jmax (furthest, t.deck.getPositionSeconds() - start);
+            fastestForward = juce::jmax (fastestForward, t.deck.getSpeed());
+            fastestBack = juce::jmin (fastestBack, t.deck.getSpeed());
+            CHECK (t.deck.getScratch() == 0);
+        }
+        INFO (bpm << " BPM");
+        CHECK_THAT (furthest, WithinAbs (0.25 * deck::secondsPerTurn, 0.02));
+        CHECK (fastestForward > 1.0f);   // pushed faster than it plays...
+        CHECK (fastestBack < -1.0f);     // ...and pulled back
+        t.play (0.05);
+        CHECK (t.deck.getScratch() == -1);   // done: the hand has let go
+        CHECK_THAT (t.deck.getPositionSeconds(), WithinAbs (start, 0.005));   // back where it took the record
+    }
+}
+
+TEST_CASE ("THE SCRATCH LIBRARY: velocity sets the stroke, a held key repeats, FORWARD is heard only on the push", "[deck][scratch]")
+{
+    const auto furthestFor = [] (float velocity)
+    {
+        Turntable t (sineRecord (1000.0));
+        t.settings.cues[0] = 0.3f;
+        t.key (deck::Key::drop1);
+        t.key (deck::Key::hold);
+        t.play (0.3);
+        const auto start = t.deck.getPositionSeconds();
+        scratchKey (t, 0, velocity);
+        scratchKey (t, 0, velocity, false);
+        double furthest = 0.0;
+        for (int b = 0; b < 60; ++b)
+        {
+            t.play (blockSize / sampleRate);
+            furthest = juce::jmax (furthest, t.deck.getPositionSeconds() - start);
+        }
+        return furthest;
+    };
+    CHECK_THAT (furthestFor (1.0f / 127.0f) / furthestFor (1.0f), WithinAbs (0.4 + 0.6 / 127.0, 0.03));
+
+    // Held: it keeps going round; let go, it finishes the stroke it's on.
+    Turntable t (sineRecord (1000.0));
+    t.settings.cues[0] = 0.3f;
+    t.key (deck::Key::drop1);
+    t.key (deck::Key::hold);
+    t.play (0.3);
+    scratchKey (t, 0, 1.0f);
+    t.play (0.9);   // over three strokes at 120 BPM (0.25 s each)
+    CHECK (t.deck.getScratch() == 0);
+    scratchKey (t, 0, 1.0f, false);
+    t.play (0.3);
+    CHECK (t.deck.getScratch() == -1);
+
+    // FORWARD: the push heard, the pull cut (the fader shut: silence).
+    Turntable f (sineRecord (1000.0));
+    f.settings.cues[0] = 0.3f;
+    f.key (deck::Key::drop1);
+    f.key (deck::Key::hold);
+    f.play (0.3);
+    scratchKey (f, 1, 1.0f);
+    scratchKey (f, 1, 1.0f, false);
+    const auto from = f.play (0.25);
+    const auto quarter = (size_t) (0.0625 * sampleRate);
+    CHECK (rms (f.out, from + quarter / 2, from + 3 * quarter / 2) > 0.1);   // the push, at speed
+    CHECK (rms (f.out, from + 5 * quarter / 2 + 96, from + 7 * quarter / 2) == 0.0);   // the pull, cut
+}
+
+TEST_CASE ("MOD HAND: the mod wheel moves the record and stays; off, the mod wheel leaves the record alone", "[deck][scratch]")
+{
+    for (const auto on : { true, false })
+    {
+        Turntable t (sineRecord (1000.0));
+        t.settings.modHand = on;
+        t.settings.reachTurns = 0.25f;
+        t.settings.cues[0] = 0.3f;
+        t.key (deck::Key::drop1);
+        t.key (deck::Key::hold);
+        t.play (0.3);
+        t.key (deck::Key::hold, false);
+        t.key (deck::Key::stop);
+        t.settings.brakeSeconds = 0.05f;
+        t.play (0.3);   // stopped
+        const auto start = t.deck.getPositionSeconds();
+        t.pending.addEvent (juce::MidiMessage::controllerEvent (1, 1, 127), 0);   // the wheel all the way up
+        t.play (0.1);
+        INFO ("MOD HAND " << (on ? "on" : "off"));
+        // On: the whole wheel is twice REACH, half a turn: 0.9 s of the record forward. Off: it doesn't move.
+        CHECK_THAT (t.deck.getPositionSeconds() - start, WithinAbs (on ? 0.5 * deck::secondsPerTurn : 0.0, 0.01));
+        t.play (0.3);   // left there: the hand lets go, the record stays (the motor's off)
+        CHECK_THAT (t.deck.getPositionSeconds() - start, WithinAbs (on ? 0.5 * deck::secondsPerTurn : 0.0, 0.01));
+    }
+}
+
+TEST_CASE ("THE SCRATCH LIBRARY in the plugin: its keys (C2 by default) play techniques, not the synth; OFF gives them back", "[deck][scratch][plugin]")
+{
+    Plugin p;
+    p.set (ParamIDs::deckOn, 1.0f);
+    p.set (ParamIDs::deckLevel, -60.0f);   // the deck silent: what's heard would be the synth
+    const auto played = p.play (0.1, noteOn (36));
+    CHECK (p.processor.getDeck().getScratch() == 0);   // BABY (C2) playing
+    CHECK (rms (played, 0, played.size()) == 0.0);     // no synth note
+    p.play (0.5);
+
+    // OFF with BABY still held: its note-off would go to the synth now, so the deck lets go (it finishes its stroke;
+    // it doesn't go round for ever).
+    p.set (ParamIDs::deckScratchKeys, 0.0f);   // OFF
+    const auto synth = p.play (0.3, noteOn (37));
+    CHECK (p.processor.getDeck().getScratch() == -1);
+    CHECK (rms (synth, 0, synth.size()) > 1.0e-3);
+}
+
+TEST_CASE ("THE SCRATCH page: its techniques listed with their keys; clicking one plays it while held", "[deck][ui][scratch]")
+{
+    Plugin p;
+    p.set (ParamIDs::deckOn, 1.0f);
+    DeckPage page (p.processor);
+    page.setSize (1476, 672);
+    auto& rack = page.getRack();
+    rack.getPageKey (DeckRack::Page::scratch).onClick();
+    page.refreshForTest();
+    // BABY's line, at the middle of its row: the first technique.
+    int found = -1;
+    for (int y = 0; y < rack.getHeight() && found < 0; y += 2)
+        for (int x = rack.getWidth() / 2; x < rack.getWidth() && found < 0; x += 2)
+            if (rack.scratchAt ({ x, y }) == 0)
+                found = y * 10000 + x;
+    REQUIRE (found >= 0);
+    const juce::Point<int> at (found % 10000 + 10, found / 10000 + 3);
+    REQUIRE (rack.scratchAt (at) == 0);
+    REQUIRE (rack.onScratchPressed != nullptr);
+    rack.onScratchPressed (rack.scratchAt (at), true);
+    p.play (0.1);
+    CHECK (p.processor.getDeck().getScratch() == 0);
+    page.refreshForTest();
+    rack.onScratchPressed (0, false);
+    p.play (0.4);
+    CHECK (p.processor.getDeck().getScratch() == -1);
+    // The page's own: other pages have no techniques to click.
+    rack.getPageKey (DeckRack::Page::deck).onClick();
+    CHECK (rack.scratchAt (at) == -1);
+}
+
+TEST_CASE ("THE DECK lets go of held keys when its keys move (their note-offs would go to the synth): no stuck HOLD", "[deck][scratch]")
+{
+    Turntable t (sineRecord (1000.0));
+    t.settings.startSeconds = 0.05f;
+    t.key (deck::Key::play);
+    t.play (0.3);
+    t.key (deck::Key::hold);
+    t.play (0.1);
+    CHECK (std::abs (t.deck.getSpeed()) < 0.01f);   // held
+    t.settings.firstKey = 36;                        // KEYS moved, HOLD's note-off never coming
+    t.play (0.2);
+    CHECK_THAT (t.deck.getSpeed(), WithinAbs (1.0, 0.01));   // let go: back with the platter
 }
