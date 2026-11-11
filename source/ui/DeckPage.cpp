@@ -667,7 +667,9 @@ void DeckPage::timerCallback()
     DeckRack::Screen screen;
     screen.caption = processor.getDeckRecordFile().isEmpty() ? "THE RECORD: BUILT IN" : "THE RECORD";
     screen.record = record != nullptr ? record->name : juce::String ("NO RECORD");
-    screen.state = ! on ? juce::String ("OFF") : std::abs (speed) < 0.0005f ? juce::String ("STOPPED") : speed < 0.0f ? juce::String ("BACKWARDS") : juce::String ("PLAYING");
+    screen.state = ! on ? juce::String ("OFF")
+                 : deck.getScratch() >= 0 ? deck::scratchNames[deck.getScratch()]   // 0.5.0: the technique playing
+                 : std::abs (speed) < 0.0005f ? juce::String ("STOPPED") : speed < 0.0f ? juce::String ("BACKWARDS") : juce::String ("PLAYING");
     screen.line1 = record != nullptr ? juce::String (deck.getPositionSeconds(), 1) + " / " + juce::String (record->seconds(), 1) + " S" : juce::String();
     screen.problem = problem.isNotEmpty();
     screen.line2 = screen.problem ? problem + ": THE HOUSE RECORD MEANWHILE"

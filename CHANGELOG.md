@@ -26,7 +26,11 @@ Each version's notes appear on its GitHub Release page.
   pitch wheel it stays where you leave it; the whole wheel moves the record twice REACH. Still for a moment, the hand
   lets go, and takes the record again from there when you move it.
 - **A SCRATCH page on the rack** (the fourth PAGE key): REACH, RATE, MOD HAND, SCRATCH KEYS, and a screen of the
-  techniques with their keys, the one playing lit. **Click a technique to play it** (held, it repeats).
+  techniques with their keys, the one playing lit. **Click a technique to play it** (held, it repeats). The record's
+  screen names the technique while it plays.
+- **Fixed: stuck keys.** A held key (HOLD, CUT, TRANSFORM, a technique) used to stick if you moved its keys (KEYS,
+  SCRATCH KEYS) or turned the deck off while holding it, as its note-off then went to the synth (a scratch would
+  repeat for ever). The deck now lets go of them.
 
 ## 0.4.0
 

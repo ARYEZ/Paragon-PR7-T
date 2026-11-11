@@ -990,6 +990,8 @@ TEST_CASE ("THE SCRATCH page: its techniques listed with their keys; clicking on
     p.play (0.1);
     CHECK (p.processor.getDeck().getScratch() == 0);
     page.refreshForTest();
+    CHECK (rack.getScreen().state == "BABY");   // the record's screen names the technique playing
+    page.refreshForTest();
     rack.onScratchPressed (0, false);
     p.play (0.4);
     CHECK (p.processor.getDeck().getScratch() == -1);

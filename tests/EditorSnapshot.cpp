@@ -357,8 +357,18 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
             processor.processBlock (buffer, midi);
             midi.clear();
         }
-        // PARAGON_SNAPSHOT_DECKRACK=fader|cues: the rack's other pages (0.4.0); =hidden: HIDE RACK, the turntable big.
+        // PARAGON_SNAPSHOT_DECKRACK=fader|cues|scratch: the rack's other pages (0.4.0, 0.5.0); =hidden: HIDE RACK, the
+        // turntable big. SCRATCH: a FLARE (A2) held, part way through, its line lit.
         auto& deckPage = view->getDeckPage();
+        if (env ("PARAGON_SNAPSHOT_DECKRACK") == "scratch")
+        {
+            midi.addEvent (juce::MidiMessage::noteOn (1, 36 + 9, 1.0f), 0);
+            for (int block = 0; block < 20; ++block)
+            {
+                processor.processBlock (buffer, midi);
+                midi.clear();
+            }
+        }
         if (const auto which = env ("PARAGON_SNAPSHOT_DECKRACK"); which == "fader" || which == "cues" || which == "scratch")
             deckPage.getRack().getPageKey (which == "fader" ? DeckRack::Page::fader : which == "cues" ? DeckRack::Page::cues : DeckRack::Page::scratch).onClick();
         else if (which == "hidden")
