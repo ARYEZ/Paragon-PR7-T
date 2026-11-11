@@ -57,6 +57,8 @@ namespace
                 std::fill (right.begin(), right.end(), 0.0f);
                 deck.process (left.data(), right.data(), blockSize, pending, 0, record.get(), settings);
                 pending.clear();
+                if (settings.ppq >= 0.0)   // the song playing: on to the next block's place, as a host's is
+                    settings.ppq += blockSize / sampleRate * settings.bpm / 60.0;
                 out.insert (out.end(), left.begin(), left.end());
             }
             return from;
@@ -429,7 +431,16 @@ TEST_CASE ("THE DECK's page: its tab, its keys press the deck's, the platter's h
     const auto centre = platter.getPlatterCentre();
     const auto r = platter.getRecordRadius() * 0.7f;
     CHECK (platter.getLocalBounds().toFloat().contains (centre));
-    CHECK (platter.getRecordRadius() > 150.0f);   // the record big enough to grab (at the plugin's 1x)
+    CHECK (platter.getRecordRadius() > 100.0f);   // the record big enough to grab (at the plugin's 1x), the rack shown
+    {
+        // HIDE RACK (0.4.0): the turntable gets the page's height.
+        const auto withRack = platter.getRecordRadius();
+        page.setRackShown (false);
+        CHECK_FALSE (page.getRack().isVisible());
+        CHECK (platter.getRecordRadius() > withRack * 1.4f);
+        page.setRackShown (true);
+        CHECK (page.getRack().isVisible());
+    }
     const auto mouse = [&platter] (juce::Point<float> at)
     {
         return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys::leftButtonModifier,
@@ -518,4 +529,250 @@ TEST_CASE ("THE TURNTABLE: the platter turns with the record, the arm swings in 
             changed += still.getPixelAt (x, y) != playing.getPixelAt (x, y) ? 1 : 0;
     INFO (changed << " sampled pixels changed");
     CHECK (changed > 2000);
+}
+
+//==============================================================================
+// THE CROSSFADER (0.4.0, stage 3).
+TEST_CASE ("THE CROSSFADER's curve: smooth is a quarter sine (-3 dB at the middle), CUT opens by 1%; HAMSTER turns it round", "[deck][fader]")
+{
+    CHECK (deck::faderGain (1.0f, 1.0f, false) == 1.0f);
+    CHECK (deck::faderGain (0.0f, 1.0f, false) == 0.0f);
+    CHECK (deck::faderGain (1.0f, 0.0f, false) == 1.0f);
+    CHECK (deck::faderGain (0.0f, 0.0f, false) == 0.0f);
+    CHECK_THAT (db (deck::faderGain (0.5f, 0.0f, false)), WithinAbs (-3.01, 0.01));   // smooth: -3 dB at the middle
+    CHECK (deck::faderGain (0.5f, 1.0f, false) == 1.0f);                               // a scratch cut: open long before
+    CHECK (deck::faderGain (0.01f, 1.0f, false) == 1.0f);                              // ...by 1% of the travel
+    CHECK_THAT (deck::faderGain (0.005f, 1.0f, false), WithinAbs (std::sin (juce::MathConstants<double>::pi / 4.0), 1.0e-5));
+    CHECK (deck::faderGain (0.0f, 1.0f, true) == 1.0f);                                // HAMSTER: the other way round
+    CHECK (deck::faderGain (1.0f, 1.0f, true) == 0.0f);
+    float last = 0.0f;   // never closing as it opens
+    for (int k = 0; k <= 100; ++k)
+    {
+        const auto g = deck::faderGain ((float) k / 100.0f, 0.5f, false);
+        CHECK (g >= last);
+        last = g;
+    }
+}
+
+TEST_CASE ("THE CROSSFADER in the deck: open is the record as it was, cut is silence, the moves are 1 ms ramps (no click)", "[deck][fader]")
+{
+    // What the deck plays for 0.5 s with the fader at `fader`.
+    const auto playing = [] (float fader, float curve = 1.0f)
+    {
+        Turntable t (sineRecord (1000.0));
+        t.settings.startSeconds = 0.05f;
+        t.settings.fader = fader;
+        t.settings.curve = curve;
+        t.key (deck::Key::play);
+        t.play (0.5);
+        return t.out;
+    };
+    const auto lastRmsOf = [] (const std::vector<float>& out, double seconds) { return rms (out, out.size() - (size_t) (seconds * sampleRate), out.size()); };
+    // Open (the default): sample for sample what 0.2.0's deck played.
+    Turntable before (sineRecord (1000.0));
+    before.settings.startSeconds = 0.05f;
+    before.key (deck::Key::play);
+    before.play (0.5);
+    CHECK (playing (1.0f) == before.out);
+    CHECK (lastRmsOf (playing (0.0f), 0.4) == 0.0);
+    CHECK_THAT (db (lastRmsOf (playing (0.5f, 0.0f), 0.2) / before.lastRms (0.2)), WithinAbs (-3.01, 0.05));
+
+    // Cut while it plays: silent within 1 ms, and no sample jumps further than the sine itself moves plus the ramp.
+    Turntable t (sineRecord (1000.0));
+    t.settings.startSeconds = 0.05f;
+    t.key (deck::Key::play);
+    t.play (0.5);
+    const auto from = t.out.size();
+    t.settings.fader = 0.0f;
+    t.play (0.1);
+    CHECK (rms (t.out, from + (size_t) (0.0011 * sampleRate), t.out.size()) == 0.0);
+    float biggest = 0.0f;
+    for (auto i = from; i < t.out.size(); ++i)
+        biggest = juce::jmax (biggest, std::abs (t.out[i] - t.out[i - 1]));
+    CHECK (biggest < 0.08f);   // a cut in one sample could jump by 0.5
+}
+
+TEST_CASE ("THE CROSSFADER's CUT key flips it while held: open to cut, or (the fader closed) a tap that opens it", "[deck][fader]")
+{
+    Turntable t (sineRecord (1000.0));
+    t.settings.startSeconds = 0.05f;
+    t.key (deck::Key::play);
+    t.play (0.5);
+    t.key (deck::Key::cut);
+    t.play (0.1);
+    CHECK (t.lastRms (0.05) == 0.0);
+    CHECK (t.deck.getFaderGain() == 0.0f);
+    t.key (deck::Key::cut, false);
+    t.play (0.1);
+    CHECK_THAT (t.lastRms (0.05), WithinAbs (0.5 / std::sqrt (2.0), 0.003));
+
+    t.settings.fader = 0.0f;   // closed: CUT taps it open
+    t.play (0.1);
+    CHECK (t.lastRms (0.05) == 0.0);
+    t.key (deck::Key::cut);
+    t.play (0.1);
+    CHECK_THAT (t.lastRms (0.05), WithinAbs (0.5 / std::sqrt (2.0), 0.003));
+}
+
+TEST_CASE ("THE CROSSFADER's TRANSFORM chops in time: 1/16 at 120 BPM opens 8 times a second, on the song's beat", "[deck][fader]")
+{
+    // Counts the openings in `out` from `from`: runs of sound after a run of silence (it was open when TRANSFORM went
+    // down, so the sound at the press isn't one).
+    const auto openings = [] (const std::vector<float>& out, size_t from)
+    {
+        int count = 0;
+        bool sounding = true;
+        for (auto i = from; i + 48 <= out.size(); i += 48)   // 1 ms windows
+        {
+            const auto now = rms (out, i, i + 48) > 0.01;
+            if (now && ! sounding)
+                ++count;
+            sounding = now;
+        }
+        return count;
+    };
+    for (const auto& [rate, expected] : { std::pair { 1, 8 }, std::pair { 0, 4 }, std::pair { 2, 16 }, std::pair { 4, 12 } })
+    {
+        Turntable t (sineRecord (1000.0));
+        t.settings.startSeconds = 0.05f;
+        t.settings.transformRate = rate;
+        t.settings.bpm = 120.0;
+        t.key (deck::Key::play);
+        t.play (0.5);
+        t.key (deck::Key::transform);
+        const auto from = t.play (1.0);
+        INFO (deck::transformNames[rate]);
+        CHECK (openings (t.out, from) == expected);
+        t.key (deck::Key::transform, false);
+        t.play (0.1);
+        CHECK (t.lastRms (0.05) > 0.3);   // let go: open again
+    }
+
+    // With the song playing, the chop follows the song's beat, not when the key went down. 1/16 at 120 BPM: a cycle
+    // is 0.25 beats (125 ms), cut for its second half. Pressed with the song at beat 0.0625, the first cut comes at
+    // beat 0.125: 31.25 ms later. With the song stopped it runs from the press: the first cut 62.5 ms later.
+    const auto firstCut = [] (double ppq)
+    {
+        Turntable t (sineRecord (1000.0));
+        t.settings.startSeconds = 0.05f;
+        t.settings.bpm = 120.0;
+        t.key (deck::Key::play);
+        t.play (0.5);
+        t.settings.ppq = ppq;
+        t.key (deck::Key::transform);
+        const auto from = t.play (0.2);
+        for (auto i = from; i + 24 <= t.out.size(); ++i)
+            if (rms (t.out, i, i + 24) == 0.0)   // half a millisecond of silence: cut (the 1 ms ramp down done)
+                return (double) (i - from) / sampleRate * 1000.0;
+        return -1.0;
+    };
+    CHECK_THAT (firstCut (0.0625), WithinAbs (31.25 + 1.0, 0.1));   // (+ the 1 ms ramp down)
+    CHECK_THAT (firstCut (-1.0), WithinAbs (62.5 + 1.0, 0.1));
+}
+
+TEST_CASE ("THE CROSSFADER in the plugin: FADER, CURVE and HAMSTER from the parameters; open by default", "[deck][fader][plugin]")
+{
+    Plugin p;
+    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load() == 1.0f);
+    p.set (ParamIDs::deckOn, 1.0f);
+    p.set (ParamIDs::deckStart, 0.05f);
+    p.set (ParamIDs::deckNeedle, 0.0f);
+    const auto open = p.play (0.6, noteOn (24 + (int) deck::Key::drop4));
+    const auto level = rms (open, (size_t) (0.3 * sampleRate), open.size());
+    CHECK (level > 0.1);
+    p.set (ParamIDs::deckFader, 0.0f);
+    const auto cut = p.play (0.3);
+    CHECK (rms (cut, (size_t) (0.01 * sampleRate), cut.size()) == 0.0);
+    p.set (ParamIDs::deckHamster, 1.0f);   // turned round: the fader at 0 is open
+    const auto turned = p.play (0.3);
+    CHECK_THAT (rms (turned, (size_t) (0.01 * sampleRate), turned.size()), WithinAbs (level, level * 0.02));
+}
+
+//==============================================================================
+// THE RACK (0.4.0, PR7-I's).
+TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, laid out inside the unit without overlapping", "[deck][ui][rack]")
+{
+    Plugin p;
+    DeckPage page (p.processor);
+    page.setSize (1476, 672);
+    auto& rack = page.getRack();
+    REQUIRE (rack.isVisible());
+    CHECK (rack.getHeight() == DeckRack::preferredHeight);
+
+    // Every deck parameter has its control on the rack, in rack style (PR7-I's big knob, value on a screen).
+    const auto controls = page.getShownControls();
+    juce::StringArray ids;
+    for (auto* c : controls)
+    {
+        CHECK (c->getParentComponent() == &rack);
+        CHECK (c->isRack());
+        ids.add (c->getParameterId());
+    }
+    for (const auto* id : { ParamIDs::deckPitch, ParamIDs::deckSpeed, ParamIDs::deckStart, ParamIDs::deckBrake, ParamIDs::deckSpin,
+                            ParamIDs::deckSpinTime, ParamIDs::deckReach, ParamIDs::deckNeedle, ParamIDs::deckFader, ParamIDs::deckCurve,
+                            ParamIDs::deckTransform, ParamIDs::deckHamster, ParamIDs::deckKeys, ParamIDs::deckLevel,
+                            ParamIDs::deckCues[0], ParamIDs::deckCues[1], ParamIDs::deckCues[2], ParamIDs::deckCues[3] })
+    {
+        INFO (id);
+        CHECK (ids.contains (id));
+    }
+    CHECK (rack.findChildWithID ("deckOn") != nullptr);
+    CHECK (rack.findChildWithID ("deckLoad") != nullptr);
+    CHECK (rack.findChildWithID ("deckHouse") != nullptr);
+
+    // Each page: its controls shown, inside the unit, none on top of another.
+    const auto face = rack.getLocalBounds().reduced (20);
+    for (const auto pageKey : { DeckRack::Page::deck, DeckRack::Page::fader, DeckRack::Page::cues })
+    {
+        rack.getPageKey (pageKey).onClick();
+        CHECK (rack.getPage() == pageKey);
+        CHECK (rack.getPageKey (pageKey).getToggleState());
+        std::vector<juce::Rectangle<int>> shown;
+        juce::StringArray shownIds;
+        for (auto* c : controls)
+            if (c->isVisible())
+            {
+                CHECK (face.contains (c->getBounds()));
+                for (const auto& other : shown)
+                    CHECK_FALSE (other.intersects (c->getBounds()));
+                shown.push_back (c->getBounds());
+                shownIds.add (c->getParameterId());
+            }
+        INFO ("page " << (int) pageKey << ": " << shownIds.joinIntoString (", "));
+        CHECK (shownIds.contains (ParamIDs::deckLevel));   // LEVEL on every page (DECK OUT)
+        CHECK (shownIds.contains (pageKey == DeckRack::Page::deck ? ParamIDs::deckPitch : pageKey == DeckRack::Page::fader ? ParamIDs::deckFader : ParamIDs::deckCues[0]));
+        CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : 6));
+    }
+
+    // ON is the deck's switch.
+    auto* on = dynamic_cast<juce::Button*> (rack.findChildWithID ("deckOn"));
+    REQUIRE (on != nullptr);
+    CHECK_FALSE (on->getToggleState());
+    on->setToggleState (true, juce::sendNotificationSync);
+    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckOn)->load() > 0.5f);
+
+    // The screen names the record and how it's turning.
+    page.refreshForTest();
+    CHECK (rack.getScreen().record == "HOUSE RECORD");
+    CHECK (rack.getScreen().state == "STOPPED");
+}
+
+TEST_CASE ("THE CROSSFADER on the page: dragging it moves FADER, and the deck is cut", "[deck][ui][fader]")
+{
+    Plugin p;
+    p.set (ParamIDs::deckOn, 1.0f);
+    p.set (ParamIDs::deckStart, 0.05f);
+    p.set (ParamIDs::deckNeedle, 0.0f);
+    DeckPage page (p.processor);
+    page.setSize (1476, 672);
+    auto& fader = page.getCrossfader();
+    CHECK (fader.getWidth() > 300);
+    CHECK (fader.getValue() == 1.0);
+    p.play (0.5, noteOn (24 + (int) deck::Key::drop4));
+    fader.setValue (0.0, juce::sendNotificationSync);   // as a drag to the CUT end does
+    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load() == 0.0f);
+    const auto cut = p.play (0.3);
+    CHECK (rms (cut, (size_t) (0.01 * sampleRate), cut.size()) == 0.0);
+    page.refreshForTest();
+    CHECK (p.processor.getDeck().getFaderGain() == 0.0f);
 }

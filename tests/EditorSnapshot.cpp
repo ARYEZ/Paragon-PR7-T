@@ -32,6 +32,7 @@
 //   PARAGON_SNAPSHOT_FFT=band:dB,...  a curve drawn for oscillator 1; PARAGON_SNAPSHOT_FFT_VIEW=harmonic|bins
 //   PARAGON_SNAPSHOT_PARAMS=id=value,...   parameters set (real units)
 //   PARAGON_SNAPSHOT_PAGE=deck       THE DECK (PR7-T 0.2.0), on, THE HOUSE RECORD playing from CUE 3
+//                                    (PARAGON_SNAPSHOT_DECKRACK=fader|cues: the rack's other pages; =hidden: HIDE RACK)
 //   PARAGON_SNAPSHOT_PAGE=fx         THE RACK (PARAGON_SNAPSHOT_RACK=1: at work on a chord, the sends too; PARAGON_SNAPSHOT_FX=eq|dominion|comp|limiter|sends|delay|reverb|modfx|mod|mod2|lofi|inserts|insdrive|insglitch|insmod|inslofi: that view, the inserts' on bus PARAGON_SNAPSHOT_BUS=1-4)
 //   PARAGON_SNAPSHOT_LIBRARIES=<folder>  the sample libraries (the Salamander's folder in it) for the piano presets
 //   PARAGON_SNAPSHOT_SFZ=<file>      oscillator 1 playing that SFZ instrument (the rack shown, its key map)
@@ -356,7 +357,13 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
             processor.processBlock (buffer, midi);
             midi.clear();
         }
-        view->getDeckPage().refreshForTest();   // what the page's timers do: read where the record is
+        // PARAGON_SNAPSHOT_DECKRACK=fader|cues: the rack's other pages (0.4.0); =hidden: HIDE RACK, the turntable big.
+        auto& deckPage = view->getDeckPage();
+        if (const auto which = env ("PARAGON_SNAPSHOT_DECKRACK"); which == "fader" || which == "cues")
+            deckPage.getRack().getPageKey (which == "fader" ? DeckRack::Page::fader : DeckRack::Page::cues).onClick();
+        else if (which == "hidden")
+            deckPage.setRackShown (false);
+        deckPage.refreshForTest();   // what the page's timers do: read where the record is
     }
     if (env ("PARAGON_SNAPSHOT_PAGE") == "arp")
     {

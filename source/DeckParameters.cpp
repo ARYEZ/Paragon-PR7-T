@@ -53,6 +53,22 @@ void addDeckParameters (juce::AudioProcessorValueTreeState::ParameterLayout& lay
     {
         return db <= -59.9f ? juce::String ("-inf") : (db > 0.05f ? "+" : "") + juce::String (db, 1) + " dB";
     }));
+    // THE CROSSFADER (0.4.0): its own hint, 45.
+    {
+        const auto v45 = [] (const char* id) { return juce::ParameterID { id, 45 }; };
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v45 (ParamIDs::deckFader), "Deck Fader", juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, d.fader,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float x, int)
+            {
+                return x <= 0.0005f ? juce::String ("CUT") : x >= 0.9995f ? juce::String ("OPEN") : juce::String (juce::roundToInt (x * 100.0f)) + "%";
+            })));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v45 (ParamIDs::deckCurve), "Deck Curve", juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, d.curve,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float x, int)
+            {
+                return x <= 0.005f ? juce::String ("SMOOTH") : x >= 0.995f ? juce::String ("CUT") : juce::String (juce::roundToInt (x * 100.0f)) + "%";
+            })));
+        layout.add (std::make_unique<juce::AudioParameterBool> (v45 (ParamIDs::deckHamster), "Deck Hamster", d.hamster));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (v45 (ParamIDs::deckTransform), "Deck Transform", deck::transformNames, d.transformRate));
+    }
     for (int cue = 0; cue < 4; ++cue)
         layout.add (makeFloat (ParamIDs::deckCues[cue], "Deck Cue " + juce::String (cue + 1), { 0.0f, 1.0f, 0.001f },
                                d.cues[(size_t) cue], [] (float x, int) { return juce::String (x * 100.0f, 1) + "%"; }));

@@ -281,6 +281,17 @@ namespace deck
         return record;
     }
 
+    float faderGain (float fader, float curve, bool hamster) noexcept
+    {
+        const auto x = juce::jlimit (0.0f, 1.0f, hamster ? 1.0f - fader : fader);
+        const auto open = 1.0f + (0.01f - 1.0f) * juce::jlimit (0.0f, 1.0f, curve);   // how far it travels to open fully
+        if (x <= 0.0f)
+            return 0.0f;
+        if (x >= open)
+            return 1.0f;
+        return std::sin (x / open * juce::MathConstants<float>::halfPi);
+    }
+
     //==============================================================================
     Deck::Deck()
     {
@@ -299,7 +310,9 @@ namespace deck
     void Deck::reset()
     {
         position = speed = platter = 0.0;
-        motorOn = spinning = holdKey = false;
+        motorOn = spinning = holdKey = cutKey = transformKey = false;
+        faderNow = 1.0f;
+        shownFader = 1.0f;
         hand = Hand::none;
         wheel = 0.0f;
         wheelCentredFor = 0;
@@ -373,6 +386,10 @@ namespace deck
         {
             if (key == (int) Key::hold)
                 holdKey = false;
+            else if (key == (int) Key::cut)
+                cutKey = false;
+            else if (key == (int) Key::transform)
+                transformKey = false;
             return;
         }
         if (! message.isNoteOn())
@@ -400,7 +417,9 @@ namespace deck
                 spinning = false;
                 break;
             }
-            default: break;   // the block's other keys: for later stages
+            case Key::cut:       cutKey = true; break;
+            case Key::transform: transformKey = true; transformBeat = 0.0; break;
+            default: break;   // the block's other keys: for the scratch library (stage 4)
         }
     }
 
@@ -418,6 +437,13 @@ namespace deck
         const auto holding = towards (4.0);    // a hand stopping it
         const auto flick = towards (20.0);     // BACKSPIN: thrown back in about 20 ms
         const auto handFollow = towards (6.0); // the record following the hand (smoothing the wheel's steps)
+        // THE CROSSFADER: where it's set (HAMSTER and CURVE in), and its moves as straight 1 ms lines: as sharp as a
+        // scratch mixer's cut sounds, without the click a jump in one sample would make.
+        const auto faderSet = faderGain (settings.fader, settings.curve, settings.hamster);
+        const auto faderFlipped = faderGain (1.0f - (settings.hamster ? 1.0f - settings.fader : settings.fader), settings.curve, false);
+        const auto faderStep = (float) (1.0 / (0.001 * hostRate));
+        const auto transformCycle = transformBeats[juce::jlimit (0, (int) std::size (transformBeats) - 1, settings.transformRate)];
+        const auto beatsPerSample = juce::jmax (1.0, settings.bpm) / 60.0 / hostRate;
         const auto turnSamples = secondsPerTurn * recordRate;
         const auto centredLetGo = (int) (0.05 * hostRate);
         const auto thumpStep = 2.0 * juce::MathConstants<double>::pi * 55.0 / hostRate;
@@ -439,6 +465,7 @@ namespace deck
         if (position > length)
             position = length;   // a shorter record put on
 
+        float blockPeak = 0.0f;
         auto events = midi.findNextSamplePosition (firstSample);
         const auto end = midi.findNextSamplePosition (firstSample + numSamples);
         for (int i = 0; i < numSamples; ++i)
@@ -529,9 +556,24 @@ namespace deck
                 outR += noise;
             }
 
-            left[i] += outL * level;
+            // THE CROSSFADER: CUT flips it while held (open to cut, or cut to open: a tap); TRANSFORM flips it for the
+            // second half of each cycle, in time with the song (or, the song stopped, from when it was pressed).
+            auto flipped = cutKey;
+            if (transformKey)
+            {
+                const auto beat = settings.ppq >= 0.0 ? settings.ppq + (double) i * beatsPerSample : transformBeat;
+                transformBeat += beatsPerSample;
+                if (std::fmod (beat, transformCycle) >= 0.5 * transformCycle)
+                    flipped = ! flipped;
+            }
+            const auto faderTarget = flipped ? faderFlipped : faderSet;
+            faderNow = faderNow < faderTarget ? juce::jmin (faderTarget, faderNow + faderStep) : juce::jmax (faderTarget, faderNow - faderStep);
+
+            const auto heardL = outL * level * faderNow, heardR = outR * level * faderNow;
+            left[i] += heardL;
             if (right != nullptr)
-                right[i] += outR * level;
+                right[i] += heardR;
+            blockPeak = juce::jmax (blockPeak, std::abs (heardL), std::abs (heardR));
         }
         // Events past the block (none, normally) still count.
         for (; events != end; ++events)
@@ -540,5 +582,7 @@ namespace deck
         shownPosition.store (position / recordRate, std::memory_order_relaxed);
         shownSpeed.store ((float) speed, std::memory_order_relaxed);
         shownMotor.store (motorOn, std::memory_order_relaxed);
+        shownFader.store (faderNow, std::memory_order_relaxed);
+        for (auto was = peak.load (std::memory_order_relaxed); blockPeak > was && ! peak.compare_exchange_weak (was, blockPeak, std::memory_order_relaxed);) {}
     }
 }

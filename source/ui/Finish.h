@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 // The unit's finish: the original pearl white with chrome rings round its
@@ -20,6 +22,9 @@ namespace Finish
     inline const juce::StringArray names { "Pearl White", "Pearl Black", "Pearl White + Neon" };
 
     Type get();
+    // PR7-T 0.4.0, from PR7-I: while a component paints (its children too), draw as this finish; nullopt to stop.
+    // THE DECK's rack is always pearl black, whatever the finish, as PR7-I's rack is on its dark page.
+    void paintAs (std::optional<Type>);
     // `remember` saves it to the settings file (off for tests and snapshots).
     void set (Type, bool remember = true);
     inline bool isBlack() { return get() == Type::pearlBlack; }          // the chassis colour

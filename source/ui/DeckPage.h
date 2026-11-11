@@ -2,8 +2,10 @@
 
 #include "PluginProcessor.h"
 #include "ui/SynthControls.h"
+#include "ui/DeckRack.h"
 
-// THE DECK's page (PR7-T 0.2.0): the turntable.
+// THE DECK's page (PR7-T 0.2.0): the turntable. 0.4.0: its controls on a rack unit across the top (DeckRack, PR7-I's),
+// the crossfader under the strip.
 //  - THE TURNTABLE (0.3.0): our own deck in the PR7 family's "Tron" look (as PR7-D's kit, PR7-I's guitar and PR7-O's
 //    strings), rendered in Blender (resources/deck/): gloss black, its neon edge running pink to red to orange. The
 //    platter turns as the record does and the arm moves in as it plays through; the neon brightens as it turns. Grab
@@ -62,6 +64,24 @@ private:
     double shownSeconds = 0.0;
 };
 
+// THE CROSSFADER on the page (0.4.0): a DJ mixer's fader to drag (FADER), its open travel lit as much as the deck is heard
+// (CUT and TRANSFORM flip it from the keys; HAMSTER turns it round: the DECK end moves to the other side).
+class DeckCrossfader final : public juce::Slider,
+                             private juce::Timer
+{
+public:
+    explicit DeckCrossfader (ParagonX1AudioProcessor&);
+    void paint (juce::Graphics&) override;
+    void refresh() { timerCallback(); }
+
+private:
+    void timerCallback() override;
+    ParagonX1AudioProcessor& processor;
+    float shownGain = 1.0f;
+    bool shownHamster = false;
+    juce::SliderParameterAttachment attachment;
+};
+
 class DeckPage final : public juce::Component,
                        private juce::Timer
 {
@@ -70,24 +90,35 @@ public:
     ~DeckPage() override;
     void paint (juce::Graphics&) override;
     void resized() override;
-    std::vector<ParamControl*> getShownControls();
+    std::vector<ParamControl*> getShownControls();   // every control on the rack, all its pages
     DeckPlatter& getPlatter() noexcept { return platter; }
+    DeckRack& getRack() noexcept { return rack; }
+    DeckCrossfader& getCrossfader() noexcept { return crossfader; }
+    // HIDE RACK / SHOW RACK (0.4.0, as PR7-I 0.6.3's): the rack hidden, the turntable gets the page's height.
+    bool isRackShown() const noexcept { return rackShown; }
+    void setRackShown (bool);
     // Reads the deck now (what the page's timers do), for tests and snapshots that run no message loop.
-    void refreshForTest() { timerCallback(); platter.refresh(); strip.refresh(); }
+    void refreshForTest() { timerCallback(); platter.refresh(); strip.refresh(); crossfader.refresh(); }
 
 private:
     void timerCallback() override;
     void press (deck::Key, bool down);
-    void refreshRecord();
+    void showRackPage();
 
     ParagonX1AudioProcessor& processor;
+    DeckRack rack;
     DeckPlatter platter;
     DeckStrip strip;
-    std::vector<std::unique_ptr<ParamControl>> top, motor, needle;
+    DeckCrossfader crossfader;
+    // The rack's controls: DECK's 8 knobs, FADER's 4, CUES' 4 and KEYS, and LEVEL.
+    std::vector<std::unique_ptr<ParamControl>> deckControls, faderControls, cueControls;
+    std::unique_ptr<ParamControl> keysMenu, level;
+    juce::TextButton onKey, loadKey, houseKey;
+    std::unique_ptr<juce::ButtonParameterAttachment> onAttachment;
     struct KeyButton { deck::Key key; std::unique_ptr<juce::TextButton> button; };
     std::vector<KeyButton> keys;
-    juce::TextButton loadButton { "LOAD RECORD..." }, houseButton { "HOUSE RECORD" };
-    juce::Label recordLabel, speedLabel, keysLabel;
+    juce::TextButton rackButton;
+    bool rackShown = true;
+    juce::Label speedLabel, keysLabel;
     std::unique_ptr<juce::FileChooser> chooser;
-    juce::String shownRecord;
 };

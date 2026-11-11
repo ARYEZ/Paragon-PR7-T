@@ -58,9 +58,19 @@ namespace deck
     inline constexpr double secondsPerTurn = 1.8;
 
     // What the 12 keys of the deck's block do, from its first (C).
-    enum class Key { play = 0, stop = 1, backspin = 2, hold = 3, drop1 = 4, drop2 = 5, drop3 = 7, drop4 = 9 };
+    // 0.4.0: CUT (F#) and TRANSFORM (G#), the crossfader's keys. A# and B are free for the scratch library (stage 4).
+    enum class Key { play = 0, stop = 1, backspin = 2, hold = 3, drop1 = 4, drop2 = 5, cut = 6, drop3 = 7, transform = 8, drop4 = 9 };
     inline constexpr int numKeys = 12;
-    inline const juce::StringArray keyNames { "PLAY", "STOP", "BACKSPIN", "HOLD", "DROP 1", "DROP 2", "", "DROP 3", "", "DROP 4", "", "" };
+    inline const juce::StringArray keyNames { "PLAY", "STOP", "BACKSPIN", "HOLD", "DROP 1", "DROP 2", "CUT", "DROP 3", "TRANSFORM", "DROP 4", "", "" };
+
+    // THE CROSSFADER (0.4.0, stage 3): the deck's channel on a DJ mixer, cut in and out by the fader, half of every
+    // scratch. TRANSFORM chops it in time with the song at one of these rates (beats a cycle: open half, cut half).
+    inline const juce::StringArray transformNames { "1/8", "1/16", "1/32", "1/8T", "1/16T" };   // by index: only append
+    inline constexpr double transformBeats[] = { 0.5, 0.25, 0.125, 1.0 / 3.0, 1.0 / 6.0 };
+    // How loud the deck is with the fader at `fader` (0 to 1 of its travel; 1: all the way to the deck's side) and
+    // CURVE at `curve`: 0 a smooth mixing fade (a quarter sine over the whole travel, -3 dB at the middle), 1 a scratch
+    // cut (fully open by 1% of the travel, as a scratch mixer's is); HAMSTER turns the fader round.
+    float faderGain (float fader, float curve, bool hamster) noexcept;
 
     struct Settings
     {
@@ -75,6 +85,13 @@ namespace deck
         float levelDb = 0.0f;            // the deck's level
         std::array<float, 4> cues { 0.0f, 0.25f, 0.5f, 0.75f };   // DROP 1-4: where the needle lands, 0 to 1 of the record
         int firstKey = 24;               // the deck's 12 keys from this MIDI note (24: C1, the keyboard's lowest)
+        // THE CROSSFADER (0.4.0).
+        float fader = 1.0f;              // 0 to 1: 1 open (the deck heard), 0 cut
+        float curve = 1.0f;              // 0: a smooth mixing fade, 1: a scratch cut
+        bool hamster = false;            // the fader turned round
+        int transformRate = 1;           // transformNames: 1/16
+        double bpm = 120.0;              // the song's tempo, for TRANSFORM
+        double ppq = -1.0;               // where the song is at the block's start, in beats (-1: stopped; TRANSFORM runs free)
 
         float baseSpeed() const noexcept { return (1.0f + pitch) * (speed45 ? 1.35f : 1.0f); }
     };
@@ -101,6 +118,9 @@ namespace deck
         double getPositionSeconds() const noexcept { return shownPosition.load (std::memory_order_relaxed); }
         float getSpeed() const noexcept { return shownSpeed.load (std::memory_order_relaxed); }   // times the sample's own speed
         bool isMotorOn() const noexcept { return shownMotor.load (std::memory_order_relaxed); }
+        float getFaderGain() const noexcept { return shownFader.load (std::memory_order_relaxed); }   // the crossfader's, now
+        // The deck's own loudest sample (after LEVEL and the crossfader) since this was last asked: the rack's meter.
+        float takePeak() noexcept { return peak.exchange (0.0f, std::memory_order_relaxed); }
 
         // For tests: the needle's random crackle the same each run.
         void seedRandom (std::int64_t seed) noexcept { random.setSeed (seed); }
@@ -129,6 +149,9 @@ namespace deck
         float wheel = 0.0f;                    // -1 to 1 (the pitch wheel's place from its centre)
         int wheelCentredFor = 0;               // samples the wheel has sat at its centre (it lets go after 50 ms)
         bool holdKey = false;                  // HOLD: a hand holding the record still
+        bool cutKey = false, transformKey = false;   // the crossfader's keys, held
+        double transformBeat = 0.0;            // TRANSFORM running free (the song stopped): beats since it was pressed
+        float faderNow = 1.0f;                 // the crossfader's gain, moving to where it's set in straight 1 ms lines
         std::atomic<bool> mouseHolding { false };   // set by the page (the message thread), read by the audio thread
         std::atomic<float> mouseTurns { 0.0f };
 
@@ -150,5 +173,7 @@ namespace deck
         std::atomic<double> shownPosition { 0.0 };
         std::atomic<float> shownSpeed { 0.0f };
         std::atomic<bool> shownMotor { false };
+        std::atomic<float> shownFader { 1.0f };
+        std::atomic<float> peak { 0.0f };
     };
 }

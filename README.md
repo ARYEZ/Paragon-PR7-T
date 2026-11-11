@@ -22,7 +22,7 @@ PR7-T is built in stages, each one released:
 |---|---|---|
 | **1** | Its own plugin: PR7-K 0.74.1 as "Paragon PR7-T", installing beside the others | **Works (0.1.0)** |
 | **2** | **The deck engine**: a record played at whatever speed and direction the motor and your hand give it (backwards too), the motor's start and brake, BACKSPIN, HOLD, needle drops to four cues, the pitch wheel as your hand; clean at any speed | **Works (0.2.0)** |
-| 3 | The crossfader: its cut curve, reverse ("hamster"), clicks | Planned |
+| **3** | **The crossfader**: its cut curve, reverse ("hamster"), CUT and TRANSFORM keys, a fader on the page | **Works (0.4.0)** |
 | 4 | The scratch library: baby, chirp, transformer, flare, crab, tear... as hand-and-fader moves, synced to tempo, played from keys | Planned |
 | 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | **Started (0.3.0)**: our own 3D turntable in the family's "Tron" look, its platter turning and arm moving as it plays, the record grabbed with the mouse; the fader to come |
 | 6 | The sound: cartridge and mixer EQ, the mixer's filter and kill switches, lo-fi (with PR7-K's CRACKLE) | Planned |
@@ -30,6 +30,12 @@ PR7-T is built in stages, each one released:
 ## Using it
 
 - **DECK** (the tab beside SYNTH): the turntable.
+  - **The rack** (0.4.0, as PR7-I's): the deck's controls on one of the family's rack units across the top, in three
+    pages (DECK, FADER, CUES); the screen shows the record and how it's turning; **ON**, **LOAD**, **HOUSE** under
+    it; **DECK OUT**: the deck's meter and **LEVEL**. **HIDE RACK** gives the turntable the page's height.
+  - **The crossfader** (0.4.0): **FADER** (open by default), **CURVE** (SMOOTH to a scratch CUT), **HAMSTER** (turned
+    round), the **CUT** key (F#: flips it while held) and **TRANSFORM** (G#: chops it in time with your song at
+    TRANSFORM's rate). Drag the fader under the record, or MIDI-learn FADER (right-click) to a controller's fader.
   - **ON**: the deck's on or off. **Off by default**, so every preset plays as it does on PR7-K. On, the deck's 12
     keys (**KEYS**, from C1 by default, the on-screen keyboard's lowest octave) and the **pitch wheel** are the deck's
     and not the synth's.

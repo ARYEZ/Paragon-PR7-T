@@ -533,6 +533,11 @@ namespace ParamIDs
     inline const juce::StringArray deckKeyNames { "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7" };   // by index: only append
     inline constexpr int deckKeysDefault = 1;   // C1 (note 24), the on-screen keyboard's lowest octave
     inline const juce::StringArray deckSpeedNames { "33", "45" };
+    // THE CROSSFADER (0.4.0, version hint 45): open by default, so 0.2.0 / 0.3.0 projects sound as they did.
+    inline constexpr auto deckFader     = "deckFader";       // 0 to 1: 1 open (the deck heard), 0 cut
+    inline constexpr auto deckCurve     = "deckCurve";       // 0 to 1: a smooth mixing fade to a scratch cut
+    inline constexpr auto deckHamster   = "deckHamster";     // the fader turned round
+    inline constexpr auto deckTransform = "deckTransform";   // choice: TRANSFORM's rate, deck::transformNames
 
     // THE INSERT BUSES (stage 7d, version hint 19): A to D, each "ins1"... "ins4" plus a setting below: PR7-G's
     // DRIVE and GLITCH (their IDs after the prefix, capitalised), then MOD and LO-FI as above, then the bus's SENDS.

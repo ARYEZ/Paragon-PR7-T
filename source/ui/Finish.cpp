@@ -31,6 +31,7 @@ namespace Finish
             }
 
             Type type = Type::pearlBlack;
+            std::optional<Type> painting;   // a component's own finish while it and its controls paint (PR7-I's paintAs)
             juce::ChangeBroadcaster broadcaster;
         };
 
@@ -43,7 +44,8 @@ namespace Finish
         }
     }
 
-    Type get() { return state().type; }
+    Type get() { return state().painting.value_or (state().type); }
+    void paintAs (std::optional<Type> type) { state().painting = type; }
 
     bool rackShown()
     {

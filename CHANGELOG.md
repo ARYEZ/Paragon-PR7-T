@@ -2,6 +2,35 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.4.0
+
+**THE CROSSFADER, and THE DECK's controls on a rack unit like PR7-I's.**
+
+- **The crossfader** (stage 3): half of every scratch. The deck's channel is cut in and out the way a DJ mixer's is.
+  - **FADER**: how open it is. Open by default, so your 0.2.0 and 0.3.0 projects sound exactly as they did.
+  - **CURVE**: from **SMOOTH**, a mixing fade (-3 dB at the middle), to **CUT**, a scratch mixer's cut: fully open
+    after the first 1% of the fader's travel. It starts on CUT.
+  - **HAMSTER**: turns the fader round, as many scratch DJs set theirs.
+  - **Two new keys**: **CUT** (F#) flips the fader while you hold it: it cuts the sound, or with the fader closed it
+    taps it open (with the pitch wheel: chirps and stabs). **TRANSFORM** (G#) chops the sound on and off in time with
+    your song while you hold it, at **TRANSFORM**'s rate (1/8, 1/16, 1/32, 1/8T, 1/16T): the transformer scratch. With
+    the song stopped it keeps its own time, from when you pressed it.
+  - Every move is a 1 ms ramp: as sharp as a real cut sounds, without a click.
+  - **A crossfader on the page**, under the record, to drag with the mouse, its open travel lit as the deck is heard.
+    Or right-click FADER on the rack to MIDI-learn a controller's fader.
+- **The rack**: all of THE DECK's controls are now on one of the family's rack units across the top of the page, the
+  same as PR7-I's guitar rack and PR7-O's: the pearl black unit with its red light, PARAGON PR7-T, the big knobs with
+  their values on small orange screens, the small neon keys, the LED screens. Three pages, from the PAGE keys:
+  - **DECK**: PITCH, RPM, START, BRAKE, SPIN, SPIN TIME, REACH, NEEDLE.
+  - **FADER**: FADER, CURVE, TRANSFORM, HAMSTER, and a screen of the crossfader at work.
+  - **CUES**: CUE 1-4, KEYS, and a screen listing the deck's keys.
+  - The screen shows the record, whether it's playing, stopped or going backwards, and where the needle is; under it
+    **ON**, **LOAD** and **HOUSE**. **DECK OUT** has the deck's own meter (after the crossfader: you see the cuts) and
+    its **LEVEL**. The rack is pearl black whatever finish you choose, as PR7-I's is.
+- **HIDE RACK / SHOW RACK**, as on PR7-I: hide the rack once your settings are made and the turntable gets the page's
+  height.
+- The keys under the record now include CUT and TRANSFORM (in two rows when the rack's hidden, so their names fit).
+
 ## 0.3.0
 
 **THE TURNTABLE in the family's "Tron" look.**

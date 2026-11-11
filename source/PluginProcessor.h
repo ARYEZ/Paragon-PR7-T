@@ -357,6 +357,7 @@ public:
     // (WAV, AIFF, FLAC, Ogg; up to 3 minutes), or THE HOUSE RECORD, our own, built in.
     deck::Settings getDeckSettings() const noexcept;
     const deck::Deck& getDeck() const noexcept { return deck; }
+    float takeDeckPeak() noexcept { return deck.takePeak(); }   // the rack's meter (0.4.0)
     std::shared_ptr<const deck::Record> getDeckRecord() const { return deckRecord; }
     bool loadDeckRecord (const juce::File&);   // false: it couldn't be read (getDeckRecordProblem says why); the record stays
     void useHouseRecord();

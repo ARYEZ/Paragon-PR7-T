@@ -1331,6 +1331,12 @@ deck::Settings ParagonX1AudioProcessor::getDeckSettings() const noexcept
     for (size_t cue = 0; cue < s.cues.size(); ++cue)
         s.cues[cue] = param (ParamIDs::deckCues[cue]);
     s.firstKey = 12 * (1 + juce::jlimit (0, ParamIDs::deckKeyNames.size() - 1, juce::roundToInt (param (ParamIDs::deckKeys))));
+    s.fader = param (ParamIDs::deckFader);
+    s.curve = param (ParamIDs::deckCurve);
+    s.hamster = isOn (ParamIDs::deckHamster);
+    s.transformRate = juce::jlimit (0, deck::transformNames.size() - 1, juce::roundToInt (param (ParamIDs::deckTransform)));
+    s.bpm = juce::jmax (1.0, hostBpm.load());
+    s.ppq = hostPpq;   // (the block's start; processChunk moves it to each piece's)
     return s;
 }
 
@@ -1580,7 +1586,12 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         engine.process (left + done, right, n, midi, start + done, settings);
         // THE DECK, added to the synth: from here on it goes through everything the synth does (the rack, OUTPUT, the LIMITER).
         if (deckOn)
-            deck.process (left + done, right, n, deckMidi, start + done, deckRecordForAudio.load(), deckSettings);
+        {
+            // TRANSFORM keeps time with the song: where the song is at this piece's start.
+            auto piece = deckSettings;
+            piece.ppq = deckSettings.ppq >= 0.0 ? deckSettings.ppq + (double) (start + done) / getSampleRate() * deckSettings.bpm / 60.0 : -1.0;
+            deck.process (left + done, right, n, deckMidi, start + done, deckRecordForAudio.load(), piece);
+        }
         updateEffectModulation (settings, n);
         {
             // What's sounding, for SIROCCO's page: played notes and answers.
