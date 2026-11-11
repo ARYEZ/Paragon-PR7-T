@@ -99,7 +99,9 @@ void ParamControl::setRack (bool inRack)
         removeChildComponent (toggle.get());
         toggle = std::move (replacement);
         addAndMakeVisible (*toggle);
-        attach (parameterId);
+        // Attached directly: attach() does nothing for the parameter it already has (0.4.0-0.5.0's rack switches, as
+        // HAMSTER, were left unattached: never showing or changing their parameter).
+        toggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (state, parameterId, *toggle);
     }
     if (box != nullptr)
     {

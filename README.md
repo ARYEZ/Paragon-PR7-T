@@ -25,7 +25,7 @@ PR7-T is built in stages, each one released:
 | **3** | **The crossfader**: its cut curve, reverse ("hamster"), CUT and TRANSFORM keys, a fader on the page | **Works (0.4.0)** |
 | **4** | **The scratch library**: baby, chirp, transformer, flare, crab, tear... as hand-and-fader moves, synced to tempo, played from keys | **Works (0.5.0)** |
 | 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | **Started (0.3.0)**: our own 3D turntable in the family's "Tron" look, its platter turning and arm moving as it plays, the record grabbed with the mouse; the fader to come |
-| 6 | The sound: cartridge and mixer EQ, the mixer's filter and kill switches, lo-fi (with PR7-K's CRACKLE) | Planned |
+| **6** | **The sound**: the cartridge, the mixer channel's isolator EQ and kills, its filter, a worn record | **Works (0.6.0)** |
 
 ## Using it
 
@@ -33,6 +33,9 @@ PR7-T is built in stages, each one released:
   - **The rack** (0.4.0, as PR7-I's): the deck's controls on one of the family's rack units across the top, in three
     pages (DECK, FADER, CUES); the screen shows the record and how it's turning; **ON**, **LOAD**, **HOUSE** under
     it; **DECK OUT**: the deck's meter and **LEVEL**. **HIDE RACK** gives the turntable the page's height.
+  - **The sound** (0.6.0, the rack's MIXER page): **CART** (CLEAN, SCRATCH, WARM), the mixer channel's **LOW, MID,
+    HIGH** isolator EQ with **KILL**s, the DJ **FILTER** (left low-pass, right high-pass) with **RES**, and **WEAR** (a
+    worn record's hiss and crackle, moving with the record, and a warp). All neutral to start.
   - **The scratch library** (0.5.0): twelve techniques, one per key on **SCRATCH KEYS** (C2 by default): BABY,
     FORWARD, BACKWARD, CHIRP, STAB, DRAG, TEAR, SCRIBBLE, TRANSFORMER, FLARE, 2-CLICK FLARE, CRAB. Each in time with
     your song (**RATE**: half, normal, double), its stroke as long as the key is hard (up to **REACH**), repeating

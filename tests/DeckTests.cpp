@@ -1196,3 +1196,26 @@ TEST_CASE ("THE SOUND in the plugin: the parameters reach the deck", "[deck][sou
     CHECK_THAT (s.mixer.resonance, WithinAbs (0.8, 0.01));
     CHECK_THAT (s.wear, WithinAbs (0.6, 0.01));
 }
+
+TEST_CASE ("THE RACK's switches (KILLs, HAMSTER) as keys: lit while on, and pressing one switches the parameter", "[deck][ui][rack]")
+{
+    Plugin p;
+    p.set (ParamIDs::deckKill[2], 1.0f);
+    DeckPage page (p.processor);
+    page.setSize (1476, 672);
+    for (auto* control : page.getShownControls())
+    {
+        if (control->getParameterId() != ParamIDs::deckKill[2] && control->getParameterId() != ParamIDs::deckHamster)
+            continue;
+        juce::Button* key = nullptr;
+        for (auto* child : control->getChildren())
+            if (auto* b = dynamic_cast<juce::Button*> (child))
+                key = b;
+        INFO (control->getParameterId());
+        REQUIRE (key != nullptr);
+        const auto on = control->getParameterId() == ParamIDs::deckKill[2];
+        CHECK (key->getToggleState() == on);   // KILL HIGH set on before the page was made; HAMSTER off
+        key->setToggleState (! on, juce::sendNotificationSync);   // as a click does
+        CHECK ((p.processor.getParameters().getRawParameterValue (control->getParameterId())->load() > 0.5f) == ! on);
+    }
+}

@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.6.0
+
+**THE SOUND: the cartridge, a DJ mixer's channel, and a worn record.**
+
+What's between the needle and your speakers on a DJ's setup, on a fifth rack page, **MIXER**. All of it starts neutral,
+so your projects sound exactly as they did until you turn something.
+
+- **CART**, the cartridge's voicing: **CLEAN** (flat), **SCRATCH** (the presence lift and softer top scratch
+  cartridges are known for: +3 dB around 3.2 kHz, the very top a little softer) and **WARM** (rounder highs, a little
+  more low end). Our own voicings, not copies of anyone's cartridge.
+- **LOW, MID, HIGH** with **KILL LOW, KILL MID, KILL HIGH**: the mixer channel's EQ as an *isolator*, the kind battle
+  mixers have. The sound is split into three bands (under 250 Hz, 250 Hz to 2.5 kHz, over 2.5 kHz) that add back up
+  perfectly flat, and each band can be turned up to +6 dB, turned down, or killed outright (measured: a kill takes its
+  band down by more than 40 dB, the rest untouched). Killing the bass on a drop, or the highs on a build, is clean.
+- **FILTER** and **RES**: the one-knob DJ filter. Left of centre a low-pass sweeping down to a muffled 60 Hz, right a
+  high-pass up to a thin 8 kHz, the centre off. **RES** gives it the peak DJ filters sing with. Swept straight across
+  the centre it fades over instead of clicking.
+- **WEAR**, a worn record: surface hiss and crackle that are *in the groove*, so they move with the record: louder
+  and brighter as you scratch it faster, silent when you hold it still. And a warp: the pitch wobbling a little (up
+  to 0.4% either way) once each turn.
+- Every switch and change is smoothed (a kill is a 5 ms fade, a section switching in or out a 10 ms crossfade), so
+  nothing clicks.
+- **Fixed: HAMSTER's key didn't work.** On the rack it showed off and pressing it didn't change HAMSTER (0.4.0 and
+  0.5.0); the knob-free switches on the rack (HAMSTER, the KILLs) now light while they're on and switch when pressed.
+
 ## 0.5.0
 
 **THE SCRATCH LIBRARY: a scratch on every key, in time with your song.**
