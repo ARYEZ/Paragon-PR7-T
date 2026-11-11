@@ -838,10 +838,34 @@ TEST_CASE ("THE SCRATCH LIBRARY's shapes: each starts and ends where the hand to
     CHECK (shapeOpenings (10) == 4);
     CHECK (shapeOpenings (11) == 2 * 4 - 1);   // (it starts on a tap: the first isn't an opening)
     CHECK (shapeOpenings (8) == 16 - 1);       // (likewise its first chop)
-    // TEAR stops half way back; SCRIBBLE's strokes are small.
+    // 0.8.0, tuned to real scratches (Hansen's measurements, KTH):
+    //  - the pull is quicker than the push: the hand's furthest at 53% of the stroke's time;
+    for (const auto t : { 0, 1, 3, 9 })
+    {
+        CHECK_THAT (deck::scratchAt (t, deck::scratchPush).hand, WithinAbs (1.0, 1.0e-9));
+        CHECK (deck::scratchAt (t, 0.4).hand < deck::scratchAt (t, 1.0 - 0.4).hand);   // the pull got further back sooner
+    }
+    //  - CHIRP: heard at the push's start, shut before it ends, shut as the pull starts, heard at its end (one opening);
+    CHECK (deck::scratchAt (3, 0.05).open);
+    CHECK_FALSE (deck::scratchAt (3, deck::scratchPush - 0.05).open);
+    CHECK_FALSE (deck::scratchAt (3, deck::scratchPush + 0.05).open);
+    CHECK (deck::scratchAt (3, 0.97).open);
+    CHECK (shapeOpenings (3) == 1);
+    //  - TRANSFORMER and CRAB: the fader rests closed and is tapped open (open less than half the time).
+    for (const auto t : { 8, 11 })
+    {
+        int open = 0;
+        for (int k = 0; k < 10000; ++k)
+            open += deck::scratchAt (t, k / 10000.0).open ? 1 : 0;
+        INFO (deck::scratchNames[t]);
+        CHECK (open < 4000);
+        CHECK (open > 1000);
+    }
+    // TEAR stops half way back; SCRIBBLE's strokes are small (four in its half beat).
     CHECK_THAT (deck::scratchAt (6, 0.57).hand, WithinAbs (0.5, 1.0e-9));
     for (int k = 0; k <= 100; ++k)
         CHECK (deck::scratchAt (7, k / 100.0).hand <= 0.12 + 1.0e-9);
+    CHECK_THAT (deck::scratchAt (7, 0.125).hand, WithinAbs (0.12, 1.0e-9));
 }
 
 TEST_CASE ("THE SCRATCH LIBRARY in the deck: BABY pushes the record a stroke forward and back in half a beat of the song", "[deck][scratch]")
@@ -927,6 +951,21 @@ TEST_CASE ("THE SCRATCH LIBRARY: velocity sets the stroke, a held key repeats, F
     const auto quarter = (size_t) (0.0625 * sampleRate);
     CHECK (rms (f.out, from + quarter / 2, from + 3 * quarter / 2) > 0.1);   // the push, at speed
     CHECK (rms (f.out, from + 5 * quarter / 2 + 96, from + 7 * quarter / 2) == 0.0);   // the pull, cut
+
+    // CHIRP (0.8.0, as Hansen measured it): the push's start heard, silent round the far turn, the pull's end heard.
+    Turntable c (sineRecord (1000.0));
+    c.settings.cues[0] = 0.3f;
+    c.key (deck::Key::drop1);
+    c.key (deck::Key::hold);
+    c.play (0.3);
+    scratchKey (c, 3, 1.0f);
+    scratchKey (c, 3, 1.0f, false);
+    const auto chirp = c.play (0.25);   // one chirp: half a beat at 120 BPM
+    const auto at = [&] (double seconds) { return chirp + (size_t) (seconds * sampleRate); };
+    const auto pushEnd = deck::scratchPush * 0.25;
+    CHECK (rms (c.out, at (0.2 * pushEnd), at (0.3 * pushEnd)) > 0.05);                     // the push's start
+    CHECK (rms (c.out, at (0.6 * pushEnd), at (pushEnd + 0.3 * (0.25 - pushEnd))) == 0.0);   // shut round the turn
+    CHECK (rms (c.out, at (pushEnd + 0.75 * (0.25 - pushEnd)), at (pushEnd + 0.85 * (0.25 - pushEnd))) > 0.05);   // the pull's end
 }
 
 TEST_CASE ("MOD HAND: the mod wheel moves the record and stays; off, the mod wheel leaves the record alone", "[deck][scratch]")

@@ -88,6 +88,7 @@ namespace deck
         double hand = 0.0;   // where the hand has the record: 0 where it took it, 1 the stroke's full length forward
         bool open = true;    // the crossfader open (else cut)
     };
+    inline constexpr double scratchPush = 0.53;                    // of a stroke's time pushing (the pull's 11% faster)
     double scratchBeats (int technique) noexcept;                 // how long one takes, in beats
     ScratchShape scratchAt (int technique, double phase) noexcept;   // at `phase` (0 to 1) through it
 
@@ -113,7 +114,7 @@ namespace deck
         double ppq = -1.0;               // where the song is at the block's start, in beats (-1: stopped; TRANSFORM runs free)
         // THE SCRATCH LIBRARY (0.5.0).
         int firstScratchKey = 36;        // the techniques' 12 keys from this note (-1: off); the deck's own keys win
-        float scratchReach = 0.25f;      // a full-velocity stroke, in turns (softer keys: down to 40% of it)
+        float scratchReach = 0.15f;      // a full-velocity stroke (0.8.0: 0.15, was 0.25), in turns (softer keys: down to 40% of it)
         int scratchRate = 1;             // scratchRateNames: 1x
         bool modHand = false;            // the mod wheel is a hand on the record (it stays where it's left)
         // THE SOUND (0.6.0, stage 6): the cartridge and the mixer channel (DeckMixer), and the record's WEAR.

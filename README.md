@@ -40,7 +40,7 @@ PR7-T is built in stages, each one released:
   - **The scratch library** (0.5.0): twelve techniques, one per key on **SCRATCH KEYS** (C2 by default): BABY,
     FORWARD, BACKWARD, CHIRP, STAB, DRAG, TEAR, SCRIBBLE, TRANSFORMER, FLARE, 2-CLICK FLARE, CRAB. Each in time with
     your song (**RATE**: half, normal, double), its stroke as long as the key is hard (up to **REACH**), repeating
-    while held. **MOD HAND** makes the mod wheel a hand on the record. The rack's SCRATCH page lists them: click one
+    while held. 0.8.0 tuned them to measurements of real DJs (K. F. Hansen's research at KTH). **MOD HAND** makes the mod wheel a hand on the record. The rack's SCRATCH page lists them: click one
     to play it.
   - **The crossfader** (0.4.0): **FADER** (open by default), **CURVE** (SMOOTH to a scratch CUT), **HAMSTER** (turned
     round), the **CUT** key (F#: flips it while held) and **TRANSFORM** (G#: chops it in time with your song at

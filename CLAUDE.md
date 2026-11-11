@@ -25,6 +25,8 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 5. **The platter view**: a drawn turntable and fader to scratch live with the mouse, glowing as it plays. Started in 0.3.0 (the Tron turntable, below); the fader comes with stage 3.
 6. **The sound** (0.6.0, done): below.
 7. **Into the FX** (0.7.0, done): the deck's sends, insert bus and the record in presets; below.
+8. **Real scratches** (0.8.0, done): the library tuned to measurements of DJs; below.
+9. **The second deck** (0.9.0, the owner's ask with 0.8.0's).
 
 ## THE DECK (0.2.0)
 
@@ -93,6 +95,24 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 - Tests: `[routing]` (bus A's DRIVE adds harmonics to the 1 kHz tone at a steady level; the delay's echo rings on after
   a fader cut; sends at 0 are sample-identical to 0.6.0), `[presets]` (the Rig round trip, save and load, a factory
   preset leaves the record, a missing file kept named, LOAD undone).
+
+## REAL SCRATCHES (0.8.0)
+
+- **The owner's ask:** "Tune the scratches to real ones and also add the second deck" (the deck: 0.9.0).
+- **Sources** (the KTH PDFs and Wikipedia couldn't be fetched from the session; what was used came through web search):
+  K. F. Hansen (KTH), "The basics of scratching" (2002), Hansen and Bresin "Analysis of a genuine scratch performance"
+  (2003), Hansen, Fabiani and Bresin (2009): a baby cycle about 260 ms; backward strokes 11% faster; most movements
+  slower than the record's nominal speed; chirps "on every movement forward, the fader closes fast after the start, and
+  backwards only the last bit of the sound is cut in"; fader openings from about 10 ms. Tutorials (DJ Times "Itching
+  to Scratch", School of Scratch, DJ wikis): transformer and crab rest closed, tapped open; flares start open, named by
+  their clicks; tear a stop in one direction; scribble a tensed forearm, no fader.
+- **Changes** (`scratchAt`): `scratchPush` 0.53 (every stroke-based technique pushes 53% of its time); CHIRP open at
+  `half < 0.35` of the push and `half > 0.65` of the pull; TRANSFORMER open 35% of each 1/32; CRAB 40% taps; SCRIBBLE 4
+  strokes per half beat; `Settings::scratchReach` (and the parameter's default) 0.15 (projects keep their saved value).
+- **Still our guesses:** the ease shape of a push, a flare's click places and lengths. Ask the owner for references
+  (songs with timestamps, videos) to match more closely.
+- Tests: `[scratch]` (the push's 53%, CHIRP's openings and its sound in the deck, TRANSFORMER and CRAB open under 40%,
+  SCRIBBLE's four strokes).
 
 ## The project
 

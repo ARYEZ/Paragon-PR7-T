@@ -298,28 +298,41 @@ namespace deck
         return beats[juce::jlimit (0, numScratches - 1, technique)];
     }
 
+    // 0.8.0: the shapes tuned to how DJs really scratch, from K. F. Hansen's measurements of DJs' record and fader
+    // movements (KTH: "The basics of scratching", 2002; "Analysis of a genuine scratch performance", 2003; Hansen,
+    // Fabiani and Bresin 2009) and the techniques' usual descriptions:
+    //  - the pull back is about 11% faster than the push (Hansen measured the backward strokes 11% faster on average),
+    //    so every stroke pushes for 53% of its time and pulls for 47% (scratchPush);
+    //  - CHIRP: "on every movement forward, the fader closes fast after the start, and backwards only the last bit of
+    //    the sound is cut in" (Hansen): heard at the push's start and the pull's end, shut round the far turn (0.5.0
+    //    cut both strokes' ends, which isn't a chirp);
+    //  - TRANSFORMER and CRAB: the fader rests closed and is tapped open (a CRAB's thumb springs it back shut after
+    //    each finger's tap), so they're short bursts, not half open (0.5.0 had them open half the time);
+    //  - SCRIBBLE: a tensed forearm's tremor, 16 strokes a second at 120 BPM (0.5.0's 32 was faster than a hand).
     ScratchShape scratchAt (int technique, double p) noexcept
     {
         p = juce::jlimit (0.0, 1.0, p);
         constexpr auto pi = juce::MathConstants<double>::pi;
+        constexpr auto push = scratchPush;
         const auto ease = [] (double x) { return (1.0 - std::cos (pi * juce::jlimit (0.0, 1.0, x))) * 0.5; };   // 0 to 1, smoothly
-        const auto stroke = (1.0 - std::cos (2.0 * pi * p)) * 0.5;   // forward to the full length and back, smoothly
-        const auto half = std::fmod (2.0 * p, 1.0);                   // how far through this half (the push or the pull)
+        const auto pushing = p < push;
+        const auto half = pushing ? p / push : (p - push) / (1.0 - push);   // how far through this stroke (the push or the pull)
+        const auto stroke = pushing ? ease (half) : 1.0 - ease (half);      // forward to the full length and back, smoothly
         switch (technique)
         {
             case 0:  return { stroke, true };                                   // BABY: forward and back, the fader open
-            case 1:  return { stroke, p < 0.5 };                                // FORWARD: heard pushed, cut pulled back
-            case 2:  return { stroke, p >= 0.5 };                               // BACKWARD: cut pushed, heard pulled back
-            case 3:  return { stroke, half < 0.55 };                            // CHIRP: each stroke's tail cut short
+            case 1:  return { stroke, pushing };                                // FORWARD: heard pushed, cut pulled back
+            case 2:  return { stroke, ! pushing };                              // BACKWARD: cut pushed, heard pulled back
+            case 3:  return { stroke, pushing ? half < 0.35 : half > 0.65 };    // CHIRP: the push's start, the pull's end
             case 4:  return { p < 0.2 ? ease (p / 0.2) : p < 0.5 ? 1.0 : ease (1.0 - (p - 0.5) / 0.5), p < 0.15 };   // STAB: a hard push, its start heard
             case 5:  return { p < 0.75 ? p / 0.75 : ease (1.0 - (p - 0.75) / 0.25), p < 0.75 };   // DRAG: a slow push heard, a quick pull cut
             case 6:  return { p < 0.3 ? ease (p / 0.3) : p < 0.5 ? 1.0 - 0.5 * ease ((p - 0.3) / 0.2)   // TEAR: pushed, then pulled back
                                        : p < 0.65 ? 0.5 : 0.5 * (1.0 - ease ((p - 0.65) / 0.35)), true };   // in two moves, a stop between
-            case 7:  return { 0.12 * (1.0 - std::cos (2.0 * pi * 8.0 * p)) * 0.5, true };   // SCRIBBLE: eight tiny tense strokes
-            case 8:  return { stroke, std::fmod (p * 16.0, 1.0) < 0.5 };        // TRANSFORMER: a slow stroke, the fader chopping 1/32s
-            case 9:  return { stroke, ! (half > 0.44 && half < 0.56) };         // FLARE: open, one click shut in each stroke
-            case 10: return { stroke, ! ((half > 0.27 && half < 0.37) || (half > 0.63 && half < 0.73)) };   // 2-CLICK FLARE
-            case 11: return { stroke, half < 0.6 && std::fmod (half * 4.0 / 0.6, 1.0) < 0.5 };   // CRAB: four quick taps on each stroke
+            case 7:  return { 0.12 * (1.0 - std::cos (2.0 * pi * 4.0 * p)) * 0.5, true };   // SCRIBBLE: four tiny tense strokes
+            case 8:  return { stroke, std::fmod (p * 16.0, 1.0) < 0.35 };       // TRANSFORMER: a slow stroke, the fader tapped open 1/32s
+            case 9:  return { stroke, ! (half > 0.42 && half < 0.58) };         // FLARE: open, one click shut in each stroke
+            case 10: return { stroke, ! ((half > 0.28 && half < 0.38) || (half > 0.62 && half < 0.72)) };   // 2-CLICK FLARE
+            case 11: return { stroke, half < 0.6 && std::fmod (half * 4.0 / 0.6, 1.0) < 0.4 };   // CRAB: four quick taps open on each stroke
             default: return {};
         }
     }

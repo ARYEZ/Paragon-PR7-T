@@ -2,6 +2,35 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.0
+
+**The scratch library tuned to how DJs really scratch.**
+
+0.5.0's twelve techniques were our own shapes, from general descriptions. This version checks them against
+measurements of real DJs: Kjetil Falkenberg Hansen's research at KTH (Stockholm), which tracked DJs' record and
+crossfader movements with sensors ("The basics of scratching", 2002; "Analysis of a genuine scratch performance",
+2003; with Fabiani and Bresin, 2009), and against how turntablists describe each technique. Where ours differed,
+they're changed:
+
+- **CHIRP was wrong; it's fixed.** Hansen: "on every movement forward, the fader closes fast after the start, and
+  backwards only the last bit of the sound is cut in." So a chirp is heard at the *start of the push* and the *end of
+  the pull*, with the fader shut round the far turn. 0.5.0 cut the end of both strokes instead.
+- **TRANSFORMER and CRAB: the fader rests closed now.** In both, a DJ's fader sits shut and is tapped open (a
+  crab's thumb springs it back shut after each finger's tap), so you hear short bursts. 0.5.0 had the fader open
+  half the time, which sounded more like a gated chop.
+- **The pull is quicker than the push.** Hansen measured DJs' backward strokes about 11% faster than their forward
+  ones, so every stroke now pushes for 53% of its time and pulls back in 47%.
+- **SCRIBBLE is slower**: 16 tiny strokes a second at 120 BPM (a tensed forearm's tremor), not 32.
+- **REACH starts at 0.15 of a turn** (was 0.25). A baby scratch cycle measured about 260 ms, and DJs' records mostly
+  moved slower than normal playing speed. A quarter turn in that time made the scratches squeal higher than real ones.
+  Your saved projects keep the REACH they had; turn it up for the old, wilder sound.
+- BABY, FORWARD, BACKWARD, STAB, DRAG, TEAR, FLARE and 2-CLICK FLARE already matched the descriptions; they only
+  get the quicker pull.
+
+What's still our guess: the exact shape of a hand's push (we use a smooth ease in and out), where a flare's click
+falls, and how long each click lasts. If you have songs or videos with scratches you want PR7-T to nail, send them
+(with timestamps) and they can be matched more closely.
+
 ## 0.7.0
 
 **THE DECK into the FX: its own sends and insert bus, and the record saved in your presets.**
