@@ -1,6 +1,7 @@
 #include "Rig.h"
 
 #include "Expansions.h"
+#include "Parameters.h"
 
 namespace
 {
@@ -18,6 +19,8 @@ namespace
     const juce::Identifier wavetableTag { "Wavetable" };
     const juce::Identifier spectrumTag { "Spectrum" };
     const juce::Identifier sfzTag { "Sfz" };
+    const juce::Identifier deckRecordTag { "DeckRecord" };   // PR7-T 0.7.0
+    const juce::Identifier deckRecordBTag { "DeckRecordB" }; // PR7-T 0.9.0: DECK B's
     const juce::Identifier freeformTag { "Freeform" };
 }
 
@@ -79,6 +82,10 @@ std::unique_ptr<juce::XmlElement> Rig::toXml() const
         element->setAttribute ("osc", oscillator + 1);
         element->setAttribute ("file", ref);
     }
+    if (deckRecord.has_value())
+        xml->createNewChildElement (deckRecordTag)->setAttribute ("file", *deckRecord);
+    if (deckRecordB.has_value())
+        xml->createNewChildElement (deckRecordBTag)->setAttribute ("file", *deckRecordB);
     for (const auto& [oscillator, edit] : spectra)
     {
         if (edit.isFlat())
@@ -137,6 +144,14 @@ std::optional<Rig> Rig::fromXml (const juce::XmlElement& xml)
         if (const auto ref = element->getStringAttribute ("file"); oscillator >= 0 && oscillator < 8 && ref.isNotEmpty())
             rig.sfz[oscillator] = ref;
     }
+    if (const auto* element = xml.getChildByName (deckRecordTag))
+        rig.deckRecord = element->getStringAttribute ("file");
+    if (const auto* element = xml.getChildByName (deckRecordBTag))
+        rig.deckRecordB = element->getStringAttribute ("file");
+    // PR7-T 0.9.0: the crossfader became the A/B fader (A at 0); before, 1 was the one deck's open end. A preset
+    // from before DECK B (no deckBOn in it) has its fader turned round, so deck A sounds as it did.
+    if (const auto fader = rig.parameters.find (ParamIDs::deckFader); fader != rig.parameters.end() && ! rig.parameters.contains (ParamIDs::deckIds[1].on))
+        fader->second = 1.0f - fader->second;
     for (const auto* element : xml.getChildWithTagNameIterator (spectrumTag))
     {
         const auto oscillator = element->getIntAttribute ("osc") - 1;

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonX1 VERSION 0.74.1 LANGUAGES C CXX)
+project(ParagonX1 VERSION 0.9.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,17 +20,17 @@ option(PARAGON_BUILD_TESTS "Build the unit tests" ON)
 include(cmake/Dependencies.cmake)
 
 juce_add_plugin(ParagonX1
-    PRODUCT_NAME             "Paragon PR7-K" # the synthesizer of the PR7 family: its own name, bundle ID and plugin code, so it installs beside the others
+    PRODUCT_NAME             "Paragon PR7-T" # the turntable instrument of the PR7 family: its own name, bundle ID and plugin code, so it installs beside the others
     COMPANY_NAME             "Paragon"
-    BUNDLE_ID                "com.paragon.paragonpr7k"
+    BUNDLE_ID                "com.paragon.paragonpr7t"
     PLUGIN_MANUFACTURER_CODE Prgn     # four characters, at least one upper case
-    PLUGIN_CODE              Pr7k     # four characters, exactly one upper case; never PR7-G's Px1a, PR7-B's Pr7b, PR7-V's Pr7v, PR7-C's Pr7c or PR7-E's Pr7e
+    PLUGIN_CODE              Pr7t     # four characters, exactly one upper case; never PR7-G's Px1a, PR7-B's Pr7b, PR7-V's Pr7v, PR7-C's Pr7c, PR7-E's Pr7e, PR7-K's Pr7k or PR7-D's Pr7d
     FORMATS                  VST3
     IS_SYNTH                 TRUE     # an instrument: MIDI in, sound out
     NEEDS_MIDI_INPUT         TRUE
     NEEDS_MIDI_OUTPUT        FALSE
     IS_MIDI_EFFECT           FALSE
-    VST3_CATEGORIES          Instrument Synth
+    VST3_CATEGORIES          Instrument Sampler
     NEEDS_CURL               TRUE     # 0.71.0, GET THE PIANO: HTTPS downloads on Linux (Windows and macOS use their own)
     COPY_PLUGIN_AFTER_BUILD  FALSE)
 
@@ -44,10 +44,24 @@ juce_add_binary_data(ParagonX1Fonts
         resources/fonts/Inter-SemiBold.ttf
         resources/fonts/InterDisplay-BlackItalic.ttf)
 
+# THE TURNTABLE's pictures (0.3.0): our own deck in the family's "Tron" look, rendered once in Blender (the deck, the
+# deck with its neon brighter, the platter and the arm that the page turns, and where things are). See
+# resources/deck/README.md.
+juce_add_binary_data(ParagonX1Deck
+    HEADER_NAME DeckImages.h
+    NAMESPACE   DeckImages
+    SOURCES
+        resources/deck/deck.jpg
+        resources/deck/deck-lit.jpg
+        resources/deck/platter.png
+        resources/deck/arm.png
+        resources/deck/deck.json)
+
 target_sources(ParagonX1
     PRIVATE
         source/Parameters.cpp
         source/RackParameters.cpp
+        source/DeckParameters.cpp
         source/ModDestinations.cpp
         source/PluginProcessor.cpp
         source/PluginEditor.cpp
@@ -87,6 +101,9 @@ target_sources(ParagonX1
         source/dsp/effects/NuclearSpring.cpp
         source/dsp/effects/LightSpeed.cpp
         source/dsp/effects/Bloom.cpp
+        # THE DECK (PR7-T 0.2.0): the turntable.
+        source/dsp/deck/Deck.cpp
+        source/dsp/deck/DeckMixer.cpp
         source/dsp/effects/Drive.cpp
         source/dsp/effects/Glitch.cpp
         source/dsp/effects/Abyss.cpp
@@ -119,6 +136,8 @@ target_sources(ParagonX1
         source/ui/PedalBody.cpp
         source/ui/EchoesPage.cpp
         source/ui/CracklePage.cpp
+        source/ui/DeckPage.cpp
+        source/ui/DeckRack.cpp
         source/ui/DownpourPage.cpp
         source/ui/SiroccoPage.cpp
         source/ui/InfernalPage.cpp
@@ -173,6 +192,7 @@ target_compile_definitions(ParagonX1
 target_link_libraries(ParagonX1
     PRIVATE
         ParagonX1Fonts
+        ParagonX1Deck
         juce::juce_audio_utils
         juce::juce_dsp
         juce::juce_recommended_warning_flags   # strict warnings for our code only

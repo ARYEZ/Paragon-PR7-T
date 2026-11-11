@@ -135,12 +135,12 @@ namespace expansions
           "desert horizon, a men's choir, shimmering strings, a marching low-brass ostinato, a smoky spaceport dance band, "
           "harps, racing strings and beeping computers. Built round LIGHTSPEED (0.73.0) and MACRO 3, LIGHTSPEED: the jump "
           "from rest to streaking stars. Its orchestral presets play the Sonatina Symphonic Orchestra once downloaded "
-          "(free), and PR7-K's own synthesized orchestra until then. Our own sounds." },
+          "(free), and PR7-T's own synthesized orchestra until then. Our own sounds." },
         { "GRAND CINEMA", "GC",
           "The modern film and trailer piano: intimate felt pianos heard up close, vast halls where the notes bloom into "
           "each other, epic low octave hits and driving ostinatos, dark clusters and detuned, prepared pianos, a reversed "
           "swell. Built round BLOOM (0.74.0), the strings ringing along and a hall opening out, and MACRO 3, BLOOM. Every "
-          "preset plays the Salamander Grand once it's downloaded (free), and PR7-K's own synthesized piano until then. "
+          "preset plays the Salamander Grand once it's downloaded (free), and PR7-T's own synthesized piano until then. "
           "Our own sounds." },
     }};
 }

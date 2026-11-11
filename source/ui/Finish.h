@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 // The unit's finish: the original pearl white with chrome rings round its
@@ -11,7 +13,7 @@
 //
 // It's a preference of the person, not part of a project or a rig: kept in a
 // small settings file in the user's application data folder, so every
-// PR7-K opened afterwards, in any project, uses the same finish. Every open
+// PR7-T opened afterwards, in any project, uses the same finish. Every open
 // window repaints when it changes.
 namespace Finish
 {
@@ -20,6 +22,9 @@ namespace Finish
     inline const juce::StringArray names { "Pearl White", "Pearl Black", "Pearl White + Neon" };
 
     Type get();
+    // PR7-T 0.4.0, from PR7-I: while a component paints (its children too), draw as this finish; nullopt to stop.
+    // THE DECK's rack is always pearl black, whatever the finish, as PR7-I's rack is on its dark page.
+    void paintAs (std::optional<Type>);
     // `remember` saves it to the settings file (off for tests and snapshots).
     void set (Type, bool remember = true);
     inline bool isBlack() { return get() == Type::pearlBlack; }          // the chassis colour
@@ -29,7 +34,7 @@ namespace Finish
     juce::ChangeBroadcaster& changes();
 
     // 0.49.0: whether the SYNTH page shows the rack (the OSCILLATORS and FILTER panels) or the front panel,
-    // remembered in the same settings file, for every PR7-K window.
+    // remembered in the same settings file, for every PR7-T window.
     bool rackShown();
     void setRackShown (bool);
 

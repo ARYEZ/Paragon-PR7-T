@@ -1,7 +1,7 @@
 
 ## Installing
 
-Download the zip for your computer below, unzip it, and copy the `Paragon PR7-K.vst3` folder into your VST3 folder. Close your DAW first if you're replacing an older version.
+Download the zip for your computer below, unzip it, and copy the `Paragon PR7-T.vst3` folder into your VST3 folder. Close your DAW first if you're replacing an older version.
 
 | OS | VST3 folder |
 |---|---|

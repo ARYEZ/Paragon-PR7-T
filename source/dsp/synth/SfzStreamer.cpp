@@ -6,7 +6,7 @@ namespace synth::sfz
     class Streamer::Thread final : public juce::Thread
     {
     public:
-        explicit Thread (Streamer& s) : juce::Thread ("PR7-K disk streaming"), owner (s) {}
+        explicit Thread (Streamer& s) : juce::Thread ("PR7-T disk streaming"), owner (s) {}
         void run() override
         {
             while (! threadShouldExit())

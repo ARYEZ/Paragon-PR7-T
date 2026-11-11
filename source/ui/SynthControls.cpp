@@ -2,10 +2,13 @@
 
 #include "ui/DockPanels.h"
 #include "ui/Finish.h"
+#include "ui/LedDisplay.h"
 #include "ui/ParagonLookAndFeel.h"
 
+namespace { constexpr int rackValueHeight = 18; }   // a rack knob's value screen (PR7-I's)
+
 ParamControl::ParamControl (juce::AudioProcessorValueTreeState& stateToUse, const juce::String& id, const juce::String& labelText,
-                            const juce::String& tooltip)
+                            const juce::String& tooltip, bool knobForChoices)
     : state (stateToUse)
 {
     label.setText (labelText, juce::dontSendNotification);
@@ -19,7 +22,7 @@ ParamControl::ParamControl (juce::AudioProcessorValueTreeState& stateToUse, cons
 
     auto* parameter = state.getParameter (id);
     jassert (parameter != nullptr);   // a typo in a panel's parameter list
-    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (parameter))
+    if (auto* choice = knobForChoices ? nullptr : dynamic_cast<juce::AudioParameterChoice*> (parameter))
     {
         box = std::make_unique<juce::ComboBox>();
         box->addItemList (choice->choices, 1);
@@ -51,6 +54,67 @@ ParamControl::ParamControl (juce::AudioProcessorValueTreeState& stateToUse, cons
 
 ParamControl::~ParamControl() = default;
 
+juce::Rectangle<float> ParamControl::valueScreen() const
+{
+    if (! rack || slider == nullptr)
+        return {};
+    return slider->getBounds().toFloat().removeFromBottom ((float) rackValueHeight)
+        .withSizeKeepingCentre (juce::jmin (82.0f, (float) getWidth() - 8.0f), (float) rackValueHeight + 4.0f);
+}
+
+void ParamControl::paint (juce::Graphics& g)
+{
+    if (const auto screen = valueScreen(); ! screen.isEmpty())
+        LedDisplay::paintScreen (g, screen, 0.45f);
+}
+
+void ParamControl::setRack (bool inRack)
+{
+    rack = inRack;
+    label.setFont (juce::FontOptions (rack ? 9.5f : 10.5f, juce::Font::bold));
+    label.setColour (juce::Label::textColourId, rack ? Finish::ink() : ParagonColours::textDim);
+    if (slider != nullptr)
+    {
+        slider->getProperties().set (ParagonLookAndFeel::pedalKnobProperty, rack);
+        slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 78, rack ? rackValueHeight : 18);
+        slider->setColour (juce::Slider::textBoxTextColourId, rack ? LedDisplay::ledOrange : ParagonColours::accent);
+        slider->setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+    }
+    if (toggle != nullptr)
+    {
+        // A switch: on a rack, one of its small keys, the stripe lit while it's on (as PR7-I's rack's keys); else the
+        // round switch. Swapped and attached again, so it stays the parameter's.
+        std::unique_ptr<juce::Button> replacement;
+        if (rack)
+        {
+            auto key = std::make_unique<juce::TextButton>();
+            key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+            key->setClickingTogglesState (true);
+            replacement = std::move (key);
+        }
+        else
+            replacement = std::make_unique<juce::ToggleButton>();
+        replacement->setTooltip (toggle->getTooltip());
+        toggleAttachment.reset();
+        removeChildComponent (toggle.get());
+        toggle = std::move (replacement);
+        addAndMakeVisible (*toggle);
+        // Attached directly: attach() does nothing for the parameter it already has (0.4.0-0.5.0's rack switches, as
+        // HAMSTER, were left unattached: never showing or changing their parameter).
+        toggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (state, parameterId, *toggle);
+    }
+    if (box != nullptr)
+    {
+        // On a screen the rack draws: the choice in orange, no box of its own.
+        box->setColour (juce::ComboBox::backgroundColourId, rack ? juce::Colours::transparentBlack : juce::Colour (0xff151217));
+        box->setColour (juce::ComboBox::outlineColourId, rack ? juce::Colours::transparentBlack : ParagonColours::panelEdge);
+        box->setColour (juce::ComboBox::textColourId, rack ? LedDisplay::ledOrange : ParagonColours::accent);
+        box->setColour (juce::ComboBox::arrowColourId, rack ? LedDisplay::ledOrange.withAlpha (0.6f) : ParagonColours::textDim);
+    }
+    resized();
+    repaint();
+}
+
 juce::Range<float> ParamControl::getModulationRange() const
 {
     const auto* h = host();
@@ -75,6 +139,8 @@ juce::Range<float> ParamControl::getModulationRange() const
 
 void ParamControl::paintOverChildren (juce::Graphics& g)
 {
+    if (const auto screen = valueScreen(); ! screen.isEmpty())
+        LedDisplay::paintGlassOverlay (g, screen.reduced (3.0f), 0.45f);   // the rack's value screen's glass
     if (dropHover)
     {
         g.setColour (ParagonColours::accent.withAlpha (0.8f));
@@ -267,7 +333,8 @@ void ParamControl::resized()
     else if (box != nullptr)
         box->setBounds (area.withSizeKeepingCentre (area.getWidth() - 2, juce::jmin (26, area.getHeight())).withY (area.getY() + 4));
     else if (toggle != nullptr)
-        toggle->setBounds (area.withSizeKeepingCentre (24, 24).withY (area.getY() + 4));
+        toggle->setBounds (rack ? area.withSizeKeepingCentre (54, 28).withY (area.getY() + juce::jmin (40, (area.getHeight() - 28) / 2))   // a rack key: by the knobs' middles, or centred in a short cell (0.6.0's KILLs)
+                                : area.withSizeKeepingCentre (24, 24).withY (area.getY() + 4));
 }
 
 //==============================================================================

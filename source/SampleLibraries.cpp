@@ -225,7 +225,7 @@ namespace libraries
     }
 
     //==========================================================================
-    Download::Download() : juce::Thread ("PR7-K library download") {}
+    Download::Download() : juce::Thread ("PR7-T library download") {}
 
     Download::~Download()
     {

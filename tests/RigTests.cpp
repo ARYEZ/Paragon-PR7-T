@@ -472,11 +472,11 @@ TEST_CASE ("Each preset's LEVEL adds to OUTPUT", "[rigs]")
     CHECK_THAT (play (6.0f) / play (0.0f), WithinAbs (1.9953, 0.01));
 }
 
-TEST_CASE ("Presets live in their own Paragon PR7-K folder, apart from its siblings' rigs", "[rigs]")
+TEST_CASE ("Presets live in their own Paragon PR7-T folder, apart from its siblings' rigs", "[rigs]")
 {
     const auto folder = RigLibrary::defaultFolder();
     CHECK (folder.getFileName() == "Rigs");
-    CHECK (folder.getParentDirectory().getFileName() == "Paragon PR7-K");
+    CHECK (folder.getParentDirectory().getFileName() == "Paragon PR7-T");
     CHECK (folder.getParentDirectory().getParentDirectory().getFileName() == "Paragon");
 
     // PR7-E's (mixing), PR7-B's (bass) and PR7-G's (guitar) rigs folders sit next to it, and are different folders.

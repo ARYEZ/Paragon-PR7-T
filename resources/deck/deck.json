@@ -1,0 +1,36 @@
+{
+ "width": 1400,
+ "height": 1080,
+ "pxPerMetre": 2500.0,
+ "platterCentre": [
+  570.0,
+  550.0
+ ],
+ "platterRadius": 415.0,
+ "recordRadius": 381.0,
+ "pivot": [
+  1095.0,
+  277.5
+ ],
+ "arm": 575.0,
+ "stylus": [
+  841.72,
+  793.71
+ ],
+ "grooveStart": 365.0,
+ "grooveEnd": 150.0,
+ "layers": {
+  "platter": [
+   151,
+   131,
+   839,
+   838
+  ],
+  "arm": [
+   815,
+   102,
+   394,
+   744
+  ]
+ }
+}

@@ -51,7 +51,7 @@ class ParamControl final : public juce::Component,
 {
 public:
     ParamControl (juce::AudioProcessorValueTreeState&, const juce::String& parameterId, const juce::String& label,
-                  const juce::String& tooltip = {});
+                  const juce::String& tooltip = {}, bool knobForChoices = false);   // (a menu's parameter as a knob: PR7-I 0.5.0's rack)
     ~ParamControl() override;
 
     void attach (const juce::String& parameterId);
@@ -62,9 +62,14 @@ public:
     // The front panel's big knobs (0.49.0): the PR7 unit's red pedal knob, its name a little larger.
     void setPedal();
     void setLabelText (const juce::String& text) { label.setText (text, juce::dontSendNotification); }
+    // PR7-T 0.4.0, from PR7-I 0.5.0: as on PR7-G's rack units: the name stamped above, the rack's big knob, the value
+    // on a small orange screen (a menu's choice in orange on a screen the rack draws).
+    void setRack (bool);
+    bool isRack() const noexcept { return rack; }
     const juce::String& getParameterId() const noexcept { return parameterId; }
 
     void resized() override;
+    void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
 
@@ -85,11 +90,12 @@ private:
 
     juce::AudioProcessorValueTreeState& state;
     juce::String parameterId;
-    bool compact = false, dropHover = false;
+    bool compact = false, dropHover = false, rack = false;
+    juce::Rectangle<float> valueScreen() const;
     juce::Label label;
     std::unique_ptr<juce::Slider> slider;
     std::unique_ptr<juce::ComboBox> box;
-    std::unique_ptr<juce::ToggleButton> toggle;
+    std::unique_ptr<juce::Button> toggle;   // a switch (0.4.0: on a rack, a small key with a neon stripe)
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> sliderAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> boxAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> toggleAttachment;

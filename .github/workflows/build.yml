@@ -28,16 +28,35 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # PR7-T 0.9.1, as PR7-O's CI: the Linux runner's own DNS has failed to find the Ubuntu mirrors ("Temporary
+      # failure resolving 'azure.archive.ubuntu.com'": 0.6.0's build never published), so it asks Cloudflare's
+      # DNS (1.1.1.1, 1.0.0.1) instead, apt retries each download, and the whole install gets three tries.
+      - name: Use Cloudflare's DNS (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo mkdir -p /etc/systemd/resolved.conf.d
+          printf '[Resolve]\nDNS=1.1.1.1 1.0.0.1\nFallbackDNS=8.8.8.8\n' | sudo tee /etc/systemd/resolved.conf.d/cloudflare.conf
+          sudo systemctl restart systemd-resolved || true
+          resolvectl status | head -20 || true
+          getent hosts azure.archive.ubuntu.com || true
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build xvfb \
-            libasound2-dev libjack-jackd2-dev ladspa-sdk \
-            libfreetype-dev libfontconfig1-dev libcurl4-openssl-dev \
-            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
-            libxrandr-dev libxrender-dev libxi-dev \
-            libegl-dev libglu1-mesa-dev mesa-common-dev
+          echo 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y ninja-build xvfb \
+                libasound2-dev libjack-jackd2-dev ladspa-sdk \
+                libfreetype-dev libfontconfig1-dev libcurl4-openssl-dev \
+                libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+                libxrandr-dev libxrender-dev libxi-dev \
+                libegl-dev libglu1-mesa-dev mesa-common-dev; then
+              exit 0
+            fi
+            echo "apt failed (attempt ${attempt}); trying again in 30 s"
+            sleep 30
+          done
+          exit 1
 
       - name: Configure
         shell: bash
@@ -57,7 +76,7 @@ jobs:
           curl -sSL -o pluginval.zip \
             "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/${{ matrix.pluginval_zip }}"
           unzip -q pluginval.zip
-          PLUGIN="build/ParagonX1_artefacts/Release/VST3/Paragon PR7-K.vst3"
+          PLUGIN="build/ParagonX1_artefacts/Release/VST3/Paragon PR7-T.vst3"
           RUN="${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process --validate"
           if [ "$RUNNER_OS" = "Linux" ]; then
             # pluginval's own Linux VST3 host now and then crashes as it shuts
@@ -106,12 +125,12 @@ jobs:
   # add a CHANGELOG.md section, push, and the release appears. Pushing a
   # matching vX.Y.Z tag works too. The release holds the builds
   # above, zipped, with notes from CHANGELOG.md.
+  # 0.9.1: published even if the Linux build failed (the owner: "just publish the windows version if need be"): it
+  # runs once the builds are done, whatever they did, and publishes the platforms whose builds passed everything
+  # (a platform's VST3 is uploaded only after its tests and pluginval pass), so long as Windows is one of them.
   release:
     name: Release
-    # Off in the seed commit: this is still PR7-K's 0.74.1, and PR7-T has no
-    # releases yet, so a push would publish a PR7-K build under PR7-T's name.
-    # Back on in 0.1.0, once the plugin is PR7-T.
-    if: false
+    if: ${{ !cancelled() && github.event_name == 'push' }}
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -150,12 +169,23 @@ jobs:
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           mkdir release
+          if [ ! -d "artifacts/ParagonX1-VST3-Windows" ]; then
+            echo "The Windows build didn't pass: nothing to publish" >&2
+            exit 1
+          fi
           # Artifact storage drops file permissions; put the executable flag
           # back on the Linux binary so hosts will load it. (No macOS build since
           # 0.71.0: the owner has no Mac, and the account's macOS runners never came.)
-          chmod -R a+x "artifacts/ParagonX1-VST3-Linux/Paragon PR7-K.vst3/Contents/x86_64-linux"
+          if [ -d "artifacts/ParagonX1-VST3-Linux" ]; then
+            chmod -R a+x "artifacts/ParagonX1-VST3-Linux/Paragon PR7-T.vst3/Contents/x86_64-linux"
+          else
+            echo "The Linux build didn't pass: publishing Windows only"
+            echo "linux_missing=true" >> "$GITHUB_ENV"
+          fi
           for os in Windows Linux; do
-            (cd "artifacts/ParagonX1-VST3-${os}" && zip -qr "../../release/ParagonPR7-K-${TAG}-${os}-VST3.zip" "Paragon PR7-K.vst3")
+            if [ -d "artifacts/ParagonX1-VST3-${os}" ]; then
+              (cd "artifacts/ParagonX1-VST3-${os}" && zip -qr "../../release/ParagonPR7-T-${TAG}-${os}-VST3.zip" "Paragon PR7-T.vst3")
+            fi
           done
           ls -l release
 
@@ -171,6 +201,9 @@ jobs:
             echo "CHANGELOG.md has no section for ${{ steps.version.outputs.version }}" >&2
             exit 1
           fi
+          if [ "${linux_missing:-}" = "true" ]; then
+            printf '\n_This release has the Windows build only: the Linux build did not pass on the GitHub machines this time (see its run under Actions)._\n' >> notes.md
+          fi
           cat .github/release-install.md >> notes.md
 
       - name: Publish the release
@@ -180,5 +213,5 @@ jobs:
           # --target creates the tag on this exact commit if it doesn't exist yet.
           gh release create "$TAG" release/*.zip \
             --target "$GITHUB_SHA" \
-            --title "Paragon PR7-K ${TAG}" \
+            --title "Paragon PR7-T ${TAG}" \
             --notes-file notes.md

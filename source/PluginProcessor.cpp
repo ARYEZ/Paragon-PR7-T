@@ -27,6 +27,8 @@ namespace
     const juce::Identifier wavetableKey { "Wavetable" };
     constexpr double retiredTableMs = 2000.0;   // how long a replaced table is kept, in case a block is still playing it
     const juce::Identifier spectraKey { "Spectra" };
+    const juce::Identifier deckRecordKey { "DeckRecord" };   // THE DECK's record (PR7-T 0.2.0): its file (none: THE HOUSE RECORD)
+    const juce::Identifier deckRecordBKey { "DeckRecordB" }; // 0.9.0: DECK B's
     const juce::Identifier spectrumKey { "Spectrum" };
     const juce::Identifier drawingsKey { "Drawings" };
     const juce::Identifier drawingKey { "Drawing" };
@@ -56,7 +58,7 @@ public:
         std::shared_ptr<const synth::Wavetable> table, pulse;
     };
 
-    SpectralBuilder() : juce::Thread ("PR7-K table builder") { startThread (juce::Thread::Priority::low); }
+    SpectralBuilder() : juce::Thread ("PR7-T table builder") { startThread (juce::Thread::Priority::low); }
     ~SpectralBuilder() override { stopThread (4000); }
 
     void submit (Job job)
@@ -231,10 +233,13 @@ ParagonX1AudioProcessor::ParagonX1AudioProcessor()
 
     rigLibrary = std::make_unique<RigLibrary>();
     rack->setFolder (rigLibrary->getFolder());
+    // THE DECK starts with THE HOUSE RECORD on it (built here, the first time, never on the audio thread).
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+        setDeckRecord (deck::houseRecord(), d);
     // MIDI LEARN: a new instance starts with the default links, if some were saved.
     if (midiLinksDefaultFile().existsAsFile())
         importMidiLinks (midiLinksDefaultFile());
-    // A new PR7-K is the Init preset (every parameter at its default), so the
+    // A new PR7-T is the Init preset (every parameter at its default), so the
     // header names it and < > step on from there.
     currentRig = { "Init", {}, "Init" };
 
@@ -280,7 +285,13 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     if (juce::MessageManager::existsAndIsCurrentThread())
         updateWavetables();
     keyboardMidi.ensureSize (2048);
+    for (auto& midi : deckMidi)
+        midi.ensureSize (2048);
+    deckScratch.setSize (2, 512);   // a piece of processChunk at most (its scratchRight's size)
+    synthMidi.ensureSize (2048);
     keyboardState.reset();
+    for (auto& d : decks)
+        d.prepare (sampleRate);
 
     outputGain.reset (sampleRate, gainRampSeconds);
     expressionGain.reset (sampleRate, 0.03);
@@ -1205,6 +1216,51 @@ void ParagonX1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         }
     }
 
+    // THE DECK: while it's on, its 12 keys and the pitch wheel (the hand on the record) are its own, not the synth's.
+    // 0.5.0: the scratch library's 12 keys too (unless OFF), and the mod wheel while it's MOD HAND. 0.9.0: two decks,
+    // each its own keys (deck A's win where they overlap); the wheels to HAND's deck.
+    std::array<bool, ParamIDs::numDecks> deckOn {};
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        deckMidi[(size_t) d].clear();
+        deckOn[(size_t) d] = isOn (ParamIDs::deckIds[(size_t) d].on);
+        if (! deckOn[(size_t) d])
+            decks[(size_t) d].releaseKeys();   // off: its held keys' note-offs go to the synth now, so it lets go of them
+    }
+    if (deckOn[0] || deckOn[1])
+    {
+        struct Blocks { int first, firstScratch; };
+        std::array<Blocks, ParamIDs::numDecks> blocks {};
+        for (int d = 0; d < ParamIDs::numDecks; ++d)
+        {
+            const auto& ids = ParamIDs::deckIds[(size_t) d];
+            const auto scratchKeys = juce::jlimit (0, ParamIDs::deckScratchKeyNames.size() - 1, juce::roundToInt (param (ids.scratchKeys)));
+            blocks[(size_t) d] = { 12 * (1 + juce::jlimit (0, ParamIDs::deckKeyNames.size() - 1, juce::roundToInt (param (ids.keys)))),
+                                   scratchKeys == 0 ? -1 : 12 * scratchKeys };
+        }
+        const auto hand = handDeck();
+        const auto modHand = isOn (ParamIDs::deckModHand);
+        synthMidi.clear();
+        for (const auto metadata : keyboardMidi)
+        {
+            const auto message = metadata.getMessage();
+            const auto note = message.isNoteOnOrOff() ? message.getNoteNumber() : -1;
+            auto to = -1;
+            if (message.isPitchWheel() || (modHand && message.isController() && message.getControllerNumber() == 1))
+                to = hand;
+            else if (note >= 0)
+                for (int d = 0; d < ParamIDs::numDecks && to < 0; ++d)
+                {
+                    const auto& b = blocks[(size_t) d];
+                    if (deckOn[(size_t) d] && ((note >= b.first && note < b.first + deck::numKeys)
+                                               || (b.firstScratch >= 0 && note >= b.firstScratch && note < b.firstScratch + deck::numScratches)))
+                        to = d;
+                }
+            (to >= 0 ? deckMidi[(size_t) to] : synthMidi).addEvent (message, metadata.samplePosition);
+        }
+        keyboardMidi.swapWith (synthMidi);
+    }
+
     // Some hosts occasionally send more samples than they promised in
     // prepareToPlay; work through an oversized block in promised-size pieces.
     for (int start = 0; start < numSamples; start += preparedBlockSize)
@@ -1292,6 +1348,107 @@ effects::Bloom::Settings ParagonX1AudioProcessor::getBloomSettings() const noexc
     s.tone = param (ParamIDs::bloomTone);
     s.width = param (ParamIDs::bloomWidth);
     return s;
+}
+
+deck::Settings ParagonX1AudioProcessor::getDeckSettings (int d) const noexcept
+{
+    const auto& ids = ParamIDs::deckIds[(size_t) d];
+    deck::Settings s;
+    s.pitch = param (ids.pitch) / 100.0f;
+    s.speed45 = juce::roundToInt (param (ids.speed)) == 1;
+    s.startSeconds = param (ids.start);
+    s.brakeSeconds = param (ids.brake);
+    s.spinSpeed = param (ids.spin);
+    s.spinSeconds = param (ids.spinTime);
+    s.reachTurns = param (ids.reach);
+    s.needle = param (ids.needle);
+    s.levelDb = param (ids.level);
+    for (size_t cue = 0; cue < s.cues.size(); ++cue)
+        s.cues[cue] = param (ids.cues[cue]);
+    s.firstKey = 12 * (1 + juce::jlimit (0, ParamIDs::deckKeyNames.size() - 1, juce::roundToInt (param (ids.keys))));
+    // THE CROSSFADER (0.9.0: the A/B fader, A at 0, B at 1): this deck's side of it, as the deck's own fader (1 its
+    // open end), HAMSTER turning it round in the deck.
+    const auto fader = param (ParamIDs::deckFader);
+    s.fader = d == 0 ? 1.0f - fader : fader;
+    s.curve = param (ParamIDs::deckCurve);
+    s.hamster = isOn (ParamIDs::deckHamster);
+    s.transformRate = juce::jlimit (0, deck::transformNames.size() - 1, juce::roundToInt (param (ParamIDs::deckTransform)));
+    s.bpm = juce::jmax (1.0, hostBpm.load());
+    s.ppq = hostPpq;   // (the block's start; processChunk moves it to each piece's)
+    const auto scratchKeys = juce::jlimit (0, ParamIDs::deckScratchKeyNames.size() - 1, juce::roundToInt (param (ids.scratchKeys)));
+    s.firstScratchKey = scratchKeys == 0 ? -1 : 12 * scratchKeys;
+    s.scratchReach = param (ids.scratchReach);
+    s.scratchRate = juce::jlimit (0, deck::scratchRateNames.size() - 1, juce::roundToInt (param (ids.scratchRate)));
+    s.modHand = isOn (ParamIDs::deckModHand) && handDeck() == d;
+    s.mixer.cart = juce::jlimit (0, deck::cartNames.size() - 1, juce::roundToInt (param (ids.cart)));
+    for (size_t band = 0; band < 3; ++band)
+    {
+        s.mixer.eqDb[band] = param (ids.eq[band]);
+        s.mixer.kill[band] = isOn (ids.kill[band]);
+    }
+    s.mixer.filter = param (ids.filter);
+    s.mixer.resonance = param (ids.filterRes);
+    s.wear = param (ids.wear);
+    return s;
+}
+
+int ParagonX1AudioProcessor::handDeck() const noexcept
+{
+    // HAND (0.9.0): the deck the pitch wheel and MOD HAND move; the other one if that deck's off and it's on.
+    const auto wanted = juce::jlimit (0, ParamIDs::numDecks - 1, juce::roundToInt (param (ParamIDs::deckHand)));
+    return isOn (ParamIDs::deckIds[(size_t) wanted].on) || ! isOn (ParamIDs::deckIds[(size_t) (1 - wanted)].on) ? wanted : 1 - wanted;
+}
+
+void ParagonX1AudioProcessor::setDeckRecord (std::shared_ptr<const deck::Record> record, int d)
+{
+    auto& side = deckSides[(size_t) d];
+    if (side.record != nullptr)
+        retiredDeckRecords.emplace_back (side.record, juce::Time::getMillisecondCounterHiRes());
+    side.record = std::move (record);
+    side.forAudio = side.record.get();
+}
+
+void ParagonX1AudioProcessor::deckRecordChangedByUser()
+{
+    rigModified = true;
+    rigBroadcaster.sendChangeMessage();
+    requestCheckpoint();
+}
+
+void ParagonX1AudioProcessor::useHouseRecord (int d)
+{
+    auto& side = deckSides[(size_t) d];
+    side.file = {};
+    side.problem = {};
+    if (side.record != deck::houseRecord())
+        setDeckRecord (deck::houseRecord(), d);
+}
+
+bool ParagonX1AudioProcessor::loadDeckRecord (const juce::File& file, int d)
+{
+    // The file is remembered even if it can't be read now (a drive not plugged in), so the project keeps asking for it.
+    auto& side = deckSides[(size_t) d];
+    side.file = file.getFullPathName();
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (file.existsAsFile() ? formats.createReaderFor (file) : nullptr);
+    if (reader == nullptr || reader->sampleRate <= 0.0 || reader->lengthInSamples <= 0)
+    {
+        side.problem = file.existsAsFile() ? "Can't read " + file.getFileName() + " (WAV, AIFF, FLAC or Ogg)"
+                                                : file.getFileName() + " is missing";
+        return false;
+    }
+    if ((double) reader->lengthInSamples / reader->sampleRate > deckRecordMaxSeconds)
+    {
+        side.problem = file.getFileName() + " is longer than 3 minutes";
+        return false;
+    }
+    const auto length = (int) reader->lengthInSamples;
+    juce::AudioBuffer<float> audio ((int) juce::jlimit (1u, 2u, reader->numChannels), length);
+    reader->read (&audio, 0, length, 0, true, true);
+    side.problem = {};
+    setDeckRecord (deck::makeRecord (audio, reader->sampleRate, file.getFileNameWithoutExtension()), d);
+    return true;
 }
 
 effects::Leviathan::Settings ParagonX1AudioProcessor::getLeviathanSettings() const noexcept
@@ -1428,6 +1585,30 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         if (osc.values[(size_t) ParamIDs::oscSetting ("On")]->load() > 0.5f)
             if (const auto b = juce::roundToInt (osc.values[(size_t) ParamIDs::oscSetting ("Insert")]->load()); b >= 1 && b <= synth::numInsertBuses)
                 rack->buses[(size_t) b - 1].used = true;
+    // 0.7.0: THE DECK's ROUTING: its insert bus (None, A-D) is used too (so the engine clears it, and it's processed),
+    // and its channel's sends, each only while its effect is on (an off send's buffer would come back dry, as the
+    // engine's own sends don't). 0.9.0: each deck's own.
+    struct DeckRouting
+    {
+        bool on = false;
+        int bus = 0;
+        std::array<float, synth::numSends> sends {};
+        deck::Settings settings;
+    };
+    std::array<DeckRouting, ParamIDs::numDecks> deckRouting;
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        const auto& ids = ParamIDs::deckIds[(size_t) d];
+        auto& r = deckRouting[(size_t) d];
+        r.on = isOn (ids.on);
+        if (! r.on)
+            continue;
+        r.bus = sendsReady ? juce::jlimit (0, synth::numInsertBuses, juce::roundToInt (param (ids.insert))) : 0;
+        if (r.bus > 0)
+            rack->buses[(size_t) r.bus - 1].used = true;
+        r.sends = { isOn (ParamIDs::delayOn) ? param (ids.sendDelay) : 0.0f, isOn (ParamIDs::reverbOn) ? param (ids.sendReverb) : 0.0f };
+        r.settings = getDeckSettings (d);
+    }
     if (sendsReady)
         for (auto& send : rack->sends)
             send.clear (0, numSamples);
@@ -1494,6 +1675,39 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         settings.modulation.ppq = hostPpq >= 0.0 ? hostPpq + (start + done) / getSampleRate() * settings.modulation.bpm / 60.0 : -1.0;
         engine.setStreamer (sfzStreamerForAudio.load(), isNonRealtime());
         engine.process (left + done, right, n, midi, start + done, settings);
+        // THE DECK, added to the synth: from here on it goes through everything the synth does (the rack, OUTPUT, the LIMITER).
+        for (int d = 0; d < ParamIDs::numDecks; ++d)
+        {
+            const auto& r = deckRouting[(size_t) d];
+            if (! r.on)
+                continue;
+            // TRANSFORM keeps time with the song: where the song is at this piece's start.
+            auto piece = r.settings;
+            piece.ppq = r.settings.ppq >= 0.0 ? r.settings.ppq + (double) (start + done) / getSampleRate() * r.settings.bpm / 60.0 : -1.0;
+            // Into its own buffer, then where its routing sends it: the mix, or its insert bus (it fills the bus as an
+            // oscillator does, the bus's effects and sends after); and its channel's sends, after its fader.
+            auto* deckL = deckScratch.getWritePointer (0);
+            auto* deckR = deckScratch.getWritePointer (1);
+            juce::FloatVectorOperations::clear (deckL, n);
+            juce::FloatVectorOperations::clear (deckR, n);
+            decks[(size_t) d].process (deckL, deckR, n, deckMidi[(size_t) d], start + done, deckSides[(size_t) d].forAudio.load(), piece);
+            auto* intoL = left + done;
+            auto* intoR = right;
+            if (r.bus > 0)
+            {
+                intoL = rack->buses[(size_t) r.bus - 1].buffer.getWritePointer (0, done);
+                intoR = rack->buses[(size_t) r.bus - 1].buffer.getWritePointer (1, done);
+            }
+            juce::FloatVectorOperations::add (intoL, deckL, n);
+            juce::FloatVectorOperations::add (intoR, deckR, n);
+            if (sendsReady)
+                for (size_t s = 0; s < r.sends.size(); ++s)
+                    if (r.sends[s] > 0.0f)
+                    {
+                        juce::FloatVectorOperations::addWithMultiply (rack->sends[s].getWritePointer (0, done), deckL, r.sends[s], n);
+                        juce::FloatVectorOperations::addWithMultiply (rack->sends[s].getWritePointer (1, done), deckR, r.sends[s], n);
+                    }
+        }
         updateEffectModulation (settings, n);
         {
             // What's sounding, for SIROCCO's page: played notes and answers.
@@ -1685,6 +1899,7 @@ void ParagonX1AudioProcessor::updateWavetables()
     std::erase_if (retiredSfz, [now] (const auto& retired) { return now > retired.second; });
     std::erase_if (retiredMatrices, [now] (const auto& retired) { return now - retired.second > retiredTableMs; });
     std::erase_if (retiredReferences, [now] (const auto& retired) { return now - retired.second > retiredTableMs; });
+    std::erase_if (retiredDeckRecords, [now] (const auto& retired) { return now - retired.second > retiredTableMs; });
 }
 
 void ParagonX1AudioProcessor::updateEffectModulation (const synth::Settings& settings, int numSamples) noexcept
@@ -2335,6 +2550,8 @@ Rig ParagonX1AudioProcessor::captureRig() const
             rig.drawings[i] = drawings[(size_t) i];
     }
     rig.modulation = matrix;
+    rig.deckRecord = deckSides[0].file;   // 0.7.0: THE DECK's record ("": the house record)
+    rig.deckRecordB = deckSides[1].file;  // 0.9.0: DECK B's
     return rig;
 }
 
@@ -2384,6 +2601,17 @@ void ParagonX1AudioProcessor::applyRig (const Rig& rig)
         matrix = rig.modulation;
         compileMatrix();
     }
+    // THE DECK's record (0.7.0): the preset's, if it holds one (loaded again only when it names another, or the one
+    // named couldn't be read); presets from before 0.7.0 and the factory's leave the record alone.
+    // 0.9.0: DECK B's likewise (presets from before 0.9.0 leave it alone).
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+        if (const auto& record = d == 0 ? rig.deckRecord : rig.deckRecordB; record.has_value())
+        {
+            if (record->isEmpty())
+                useHouseRecord (d);
+            else if (*record != deckSides[(size_t) d].file || deckSides[(size_t) d].problem.isNotEmpty())
+                loadDeckRecord (juce::File (*record), d);
+        }
 
     applyingRig = false;
     rigModified = false;
@@ -2559,6 +2787,10 @@ void ParagonX1AudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         state.appendChild (juce::ValueTree::fromXml (*matrix.toXml()), nullptr);
     if (! midiLinks.isEmpty())
         state.appendChild (juce::ValueTree::fromXml (*midiLinks.toXml()), nullptr);
+    if (deckSides[0].file.isNotEmpty())
+        state.appendChild (juce::ValueTree (deckRecordKey, { { "file", deckSides[0].file } }), nullptr);
+    if (deckSides[1].file.isNotEmpty())
+        state.appendChild (juce::ValueTree (deckRecordBKey, { { "file", deckSides[1].file } }), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -2627,6 +2859,18 @@ void ParagonX1AudioProcessor::setStateInformation (const void* data, int sizeInB
             newMatrix = ModMatrix::fromXml (*xml);
         state.removeChild (saved, nullptr);
     }
+    // THE DECK's record: the project's file (none: THE HOUSE RECORD). 0.9.0: DECK B's too.
+    std::array<juce::String, ParamIDs::numDecks> deckFiles;
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+        if (auto saved = state.getChildWithName (d == 0 ? deckRecordKey : deckRecordBKey); saved.isValid())
+        {
+            deckFiles[(size_t) d] = saved["file"].toString();
+            state.removeChild (saved, nullptr);
+        }
+    // 0.9.0: the crossfader became the A/B fader (A at 0); a project from before DECK B (no deckBOn in it) saved the
+    // one deck's fader with 1 its open end: turned round, deck A sounds as it did.
+    if (auto fader = state.getChildWithProperty ("id", ParamIDs::deckFader); fader.isValid() && ! state.getChildWithProperty ("id", ParamIDs::deckIds[1].on).isValid())
+        fader.setProperty ("value", 1.0 - (double) fader["value"], nullptr);
     // MIDI LEARN's links: the project's, if it has any (else the ones this instance has: its default).
     if (auto saved = state.getChildWithName (midiLinksKey); saved.isValid())
     {
@@ -2642,6 +2886,14 @@ void ParagonX1AudioProcessor::setStateInformation (const void* data, int sizeInB
     for (int i = 0; i < ParamIDs::numOscillators; ++i)
         buildFreeform (i);
     loadedTables = tables;
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        const auto& file = deckFiles[(size_t) d];
+        if (file.isEmpty())
+            useHouseRecord (d);
+        else if (file != deckSides[(size_t) d].file || deckSides[(size_t) d].problem.isNotEmpty())
+            loadDeckRecord (juce::File (file), d);
+    }
     for (int i = 0; i < ParamIDs::numOscillators; ++i)
         if (instrumentRefs[(size_t) i] != sfzRefs[(size_t) i] || sfzStates[(size_t) i] == SfzState::failed)
             startSfzLoad (i, instrumentRefs[(size_t) i]);
@@ -2801,7 +3053,7 @@ bool ParagonX1AudioProcessor::exportArpMidi (int arp, const juce::File& file) co
 juce::File ParagonX1AudioProcessor::arpMidiDragFile (int arp) const
 {
     auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                    .getChildFile ("Paragon PR7-K").getChildFile ("Arp " + juce::String (arp + 1) + ".mid");
+                    .getChildFile ("Paragon PR7-T").getChildFile ("Arp " + juce::String (arp + 1) + ".mid");
     exportArpMidi (arp, file);
     return file;
 }

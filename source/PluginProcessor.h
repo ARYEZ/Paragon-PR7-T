@@ -10,6 +10,7 @@
 #include "Parameters.h"
 #include "Rack.h"
 #include "dsp/synth/Engine.h"
+#include "dsp/deck/Deck.h"
 #include "dsp/synth/Freeform.h"
 #include "dsp/synth/Spectrum.h"
 #include "dsp/synth/Wavetable.h"
@@ -35,8 +36,8 @@ struct CurrentRig
     }
 };
 
-// PR7-K: an instrument. MIDI in (from the DAW and the on-screen keyboard),
-// the synth engine, the preset's level and OUTPUT, stereo out.
+// PR7-T: an instrument. MIDI in (from the DAW and the on-screen keyboard),
+// the synth engine and THE DECK (the turntable), the preset's level and OUTPUT, stereo out.
 class ParagonX1AudioProcessor final : public juce::AudioProcessor,
                                       private juce::Timer,
                                       private juce::AudioProcessorValueTreeState::Listener,
@@ -253,6 +254,8 @@ public:
         rack->loFi.seedRandom (seed);
         rack->delay.seedRandom (seed);
         rack->crackle.seedRandom ((std::uint32_t) seed);
+        for (int d = 0; d < ParamIDs::numDecks; ++d)
+            decks[(size_t) d].seedRandom (seed + 100 * d);
         rack->downpour.seedRandom ((std::uint32_t) seed);
         rack->infernal.seedRandom ((std::uint32_t) seed);
         rack->blackHole.seedRandom ((std::uint32_t) seed);
@@ -350,6 +353,24 @@ public:
     // CRACKLE (0.56.0): its settings as they are now (RATE, CLUSTER, LEVEL as the matrix moves them), and the counter.
     effects::Crackle::Settings getCrackleSettings() const noexcept;
     const effects::Crackle& getCrackle() const noexcept { return rack->crackle; }
+    // THE DECK (PR7-T 0.2.0): the turntable. Its settings as the parameters have them; where its needle is and how
+    // fast it turns (for the page); the record on it (message thread). A record is a sample loaded from a file
+    // (WAV, AIFF, FLAC, Ogg; up to 3 minutes), or THE HOUSE RECORD, our own, built in.
+    // 0.9.0: two decks, A (0) and B (1); each call's `d` says which (A where it's left out, as before 0.9.0).
+    deck::Settings getDeckSettings (int d = 0) const noexcept;
+    int handDeck() const noexcept;   // HAND (0.9.0): the deck the pitch wheel and MOD HAND move
+    const deck::Deck& getDeck (int d = 0) const noexcept { return decks[(size_t) d]; }
+    float takeDeckPeak (int d = 0) noexcept { return decks[(size_t) d].takePeak(); }   // the rack's meter (0.4.0)
+    std::shared_ptr<const deck::Record> getDeckRecord (int d = 0) const { return deckSides[(size_t) d].record; }
+    bool loadDeckRecord (const juce::File&, int d = 0);   // false: it couldn't be read (getDeckRecordProblem says why); the record stays
+    void useHouseRecord (int d = 0);
+    // The record changed from the page (LOAD, HOUSE): the preset marked changed, an undo step (0.7.0).
+    void deckRecordChangedByUser();
+    juce::String getDeckRecordFile (int d = 0) const { return deckSides[(size_t) d].file; }   // empty: THE HOUSE RECORD
+    juce::String getDeckRecordProblem (int d = 0) const { return deckSides[(size_t) d].problem; }
+    static constexpr double deckRecordMaxSeconds = 180.0;
+    // The page's hand on the platter: while holding, how far it has turned the record since it took hold.
+    void setDeckMouseHand (bool holding, float turns, int d = 0) noexcept { decks[(size_t) d].setMouseHand (holding, turns); }
     // DOWNPOUR (0.57.0): its settings as they are now (RAIN, DROPS, DISTANCE, LEVEL as the matrix moves them), and the rain.
     effects::Downpour::Settings getDownpourSettings() const noexcept;
     const effects::Downpour& getDownpour() const noexcept { return rack->downpour; }
@@ -471,7 +492,7 @@ private:
         bool operator== (const Snapshot& other) const
         {
             return rig.parameters == other.rig.parameters && rig.wavetables == other.rig.wavetables && rig.spectra == other.rig.spectra
-                && rig.sfz == other.rig.sfz
+                && rig.sfz == other.rig.sfz && rig.deckRecord == other.rig.deckRecord && rig.deckRecordB == other.rig.deckRecordB   // (0.7.0: the deck's record, so changing it is an undo step)
                 && rig.drawings == other.rig.drawings && rig.modulation == other.rig.modulation && current == other.current;
         }
     };
@@ -539,7 +560,7 @@ private:
     void installSfzLoads();
     void setSfzInstrument (int osc, std::shared_ptr<const synth::sfz::Instrument>);
     juce::File sfzLibrariesFile() const;
-    std::unique_ptr<juce::ThreadPool> sfzPool = std::make_unique<juce::ThreadPool> (juce::ThreadPoolOptions{}.withNumberOfThreads (1).withThreadName ("PR7-K SFZ loading"));
+    std::unique_ptr<juce::ThreadPool> sfzPool = std::make_unique<juce::ThreadPool> (juce::ThreadPoolOptions{}.withNumberOfThreads (1).withThreadName ("PR7-T SFZ loading"));
 
     // FFT: each oscillator's curve, and the edited copies of its wave built
     // from it (in the background; then handed to the audio thread as the
@@ -573,6 +594,23 @@ private:
     synth::Engine engine;
     juce::MidiKeyboardState keyboardState;
     juce::MidiBuffer keyboardMidi;   // the DAW's MIDI plus the on-screen keyboard's, per block
+    // THE DECK: the turntable, and its share of the MIDI (its 12 keys and the pitch wheel, taken from the synth's
+    // while it's on). Its record handed to the audio thread as the MIMIC recording is: a plain pointer, a replaced
+    // one kept 2 s so a block still playing it never reads freed memory.
+    // 0.9.0: two of each, A and B.
+    std::array<deck::Deck, ParamIDs::numDecks> decks;
+    std::array<juce::MidiBuffer, ParamIDs::numDecks> deckMidi;
+    juce::MidiBuffer synthMidi;             // (what's left for the synth, swapped back in)
+    juce::AudioBuffer<float> deckScratch;   // 0.7.0: a piece of a deck, before its routing
+    struct DeckSide
+    {
+        std::shared_ptr<const deck::Record> record;
+        std::atomic<const deck::Record*> forAudio { nullptr };
+        juce::String file, problem;
+    };
+    std::array<DeckSide, ParamIDs::numDecks> deckSides;
+    std::vector<std::pair<std::shared_ptr<const deck::Record>, double>> retiredDeckRecords;
+    void setDeckRecord (std::shared_ptr<const deck::Record>, int d);
     std::atomic<int> activeVoices { 0 };
 
     // Smoothing stops zipper noise when OUTPUT or the preset's level moves.
