@@ -527,7 +527,10 @@ namespace deck
         // THE CROSSFADER: where it's set (HAMSTER and CURVE in), and its moves as straight 1 ms lines: as sharp as a
         // scratch mixer's cut sounds, without the click a jump in one sample would make.
         const auto faderSet = faderGain (settings.fader, settings.curve, settings.hamster);
-        const auto faderFlipped = faderGain (1.0f - (settings.hamster ? 1.0f - settings.fader : settings.fader), settings.curve, false);
+        // CUT and TRANSFORM (0.9.0): the deck's channel snapped to the other edge (open: cut; cut: open), a tap on
+        // the fader. (0.4.0-0.8.0 mirrored the fader's place, the same at its ends; with the A/B fader in the middle,
+        // where both decks are open, a mirror wouldn't move it.)
+        const auto faderFlipped = faderSet >= 0.5f ? 0.0f : 1.0f;
         const auto faderStep = (float) (1.0 / (0.001 * hostRate));
         const auto transformCycle = transformBeats[juce::jlimit (0, (int) std::size (transformBeats) - 1, settings.transformRate)];
         const auto beatsPerSample = juce::jmax (1.0, settings.bpm) / 60.0 / hostRate;

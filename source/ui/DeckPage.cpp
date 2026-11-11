@@ -104,7 +104,7 @@ namespace
     }
 }
 
-DeckPlatter::DeckPlatter (ParagonX1AudioProcessor& p) : processor (p)
+DeckPlatter::DeckPlatter (ParagonX1AudioProcessor& p, int d) : processor (p), deckIndex (d)
 {
     setTooltip ("THE TURNTABLE. Grab the record and drag round it to scratch: clockwise moves it forwards, back moves it "
                 "back, holding still stops it. Let go and the motor takes it again. The label's mark turns with the "
@@ -141,11 +141,11 @@ float DeckPlatter::getRecordRadius() const
 
 void DeckPlatter::timerCallback()
 {
-    const auto& deck = processor.getDeck();
+    const auto& deck = processor.getDeck (deckIndex);
     const auto turns = deck.getPositionSeconds() / deck::secondsPerTurn;
-    const auto on = processor.getParameters().getRawParameterValue (ParamIDs::deckOn)->load() > 0.5f;
+    const auto on = processor.getParameters().getRawParameterValue (ParamIDs::deckIds[deckIndex].on)->load() > 0.5f;
     const auto lit = on ? juce::jlimit (0.0f, 1.0f, std::abs (deck.getSpeed())) : 0.0f;
-    const auto record = processor.getDeckRecord();
+    const auto record = processor.getDeckRecord (deckIndex);
     const auto through = record != nullptr && record->seconds() > 0.0
                        ? (float) juce::jlimit (0.0, 1.0, deck.getPositionSeconds() / record->seconds()) : 0.0f;
     const auto& pics = deckPictures();
@@ -175,7 +175,9 @@ void DeckPlatter::mouseDown (const juce::MouseEvent& e)
     grabbed = true;
     handTurns = 0.0f;
     lastAngle = angleAt (e.position);
-    processor.setDeckMouseHand (true, 0.0f);
+    processor.setDeckMouseHand (true, 0.0f, deckIndex);
+    if (onGrab != nullptr)
+        onGrab();
     repaint();
 }
 
@@ -191,7 +193,7 @@ void DeckPlatter::mouseDrag (const juce::MouseEvent& e)
         turned += twoPi;
     lastAngle = angle;
     handTurns += turned / twoPi;
-    processor.setDeckMouseHand (true, handTurns);
+    processor.setDeckMouseHand (true, handTurns, deckIndex);
 }
 
 void DeckPlatter::mouseUp (const juce::MouseEvent&)
@@ -199,8 +201,17 @@ void DeckPlatter::mouseUp (const juce::MouseEvent&)
     if (! grabbed)
         return;
     grabbed = false;
-    processor.setDeckMouseHand (false, 0.0f);
+    processor.setDeckMouseHand (false, 0.0f, deckIndex);
     repaint();
+}
+
+void DeckPlatter::setSelected (bool isSelected)
+{
+    if (selected != isSelected)
+    {
+        selected = isSelected;
+        repaint();
+    }
 }
 
 void DeckPlatter::prepare (float scale)
@@ -284,10 +295,19 @@ void DeckPlatter::paint (juce::Graphics& g)
         g.setColour (ParagonColours::accent.withAlpha (0.85f));
         g.drawEllipse (juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (centre), 2.5f);
     }
+
+    // 0.9.0: the deck's name in its corner, lit while it's the one the rack shows.
+    const auto nameArea = juce::Rectangle<float> (area.getX() + 10.0f, area.getY() + 8.0f, 90.0f, 22.0f);
+    g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+    if (selected)
+        g.setGradientFill (ParagonLookAndFeel::menuHighlight (nameArea));
+    else
+        g.setColour (ParagonColours::textDim);
+    g.drawText ("DECK " + ParamIDs::deckNames[deckIndex], nameArea, juce::Justification::centredLeft, false);
 }
 
 //==============================================================================
-DeckStrip::DeckStrip (ParagonX1AudioProcessor& p) : processor (p)
+DeckStrip::DeckStrip (ParagonX1AudioProcessor& p, int d) : processor (p), deckIndex (d)
 {
     setTooltip ("The record: its sound from start to end, the needle's place on it (the line), and the cue points DROP 1-4 "
                 "land on (CUE 1-4 below).");
@@ -296,7 +316,7 @@ DeckStrip::DeckStrip (ParagonX1AudioProcessor& p) : processor (p)
 
 void DeckStrip::timerCallback()
 {
-    shownSeconds = processor.getDeck().getPositionSeconds();
+    shownSeconds = processor.getDeck (deckIndex).getPositionSeconds();
     repaint();
 }
 
@@ -307,9 +327,13 @@ void DeckStrip::paint (juce::Graphics& g)
     g.fillRoundedRectangle (bounds, 6.0f);
     g.setColour (ParagonColours::panelEdge);
     g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
-    const auto record = processor.getDeckRecord();
+    const auto record = processor.getDeckRecord (deckIndex);
     auto area = bounds.reduced (14.0f, 10.0f);
     auto labels = area.removeFromTop (18.0f);
+    // 0.9.0: which deck's, and its record's name.
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    g.setColour (ParagonColours::accent);
+    const auto nameArea = juce::Rectangle<float> (area.getX(), area.getBottom() - 6.0f, juce::jmin (260.0f, area.getWidth() * 0.6f), 16.0f);
     if (record == nullptr || record->length <= 0)
         return;
 
@@ -327,7 +351,7 @@ void DeckStrip::paint (juce::Graphics& g)
     }
 
     // The cue points.
-    const auto settings = processor.getDeckSettings();
+    const auto settings = processor.getDeckSettings (deckIndex);
     g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     for (size_t cue = 0; cue < settings.cues.size(); ++cue)
     {
@@ -341,6 +365,12 @@ void DeckStrip::paint (juce::Graphics& g)
         g.drawText (juce::String ((int) cue + 1), juce::Rectangle<float> (x + 6.0f, labels.getY(), 20.0f, labels.getHeight()),
                     juce::Justification::centredLeft, false);
     }
+
+    // 0.9.0: whose record it is, under it.
+    g.setColour (juce::Colour (0xff070507).withAlpha (0.8f));
+    g.fillRect (nameArea.withWidth (juce::jmin (nameArea.getWidth(), 12.0f + 6.5f * (float) (record->name.length() + 3))));
+    g.setColour (ParagonColours::accent);
+    g.drawText (ParamIDs::deckNames[deckIndex] + "  " + record->name.toUpperCase(), nameArea, juce::Justification::centredLeft, true);
 
     // The needle.
     const auto x = area.getX() + through * area.getWidth();
@@ -358,19 +388,20 @@ DeckCrossfader::DeckCrossfader (ParagonX1AudioProcessor& p)
       processor (p),
       attachment (*p.getParameters().getParameter (ParamIDs::deckFader), *this)
 {
-    setTooltip ("THE CROSSFADER: drag it to cut the deck in and out (the DECK end open, the other end cut); double-click "
-                "to open it. CUT and TRANSFORM flip it from the keys; HAMSTER (FADER page) turns it round; CURVE sets "
-                "how sharply it cuts. Right-click a knob on the rack to MIDI-learn a controller's fader.");
-    setDoubleClickReturnValue (true, 1.0);
+    setTooltip ("THE CROSSFADER, between DECK A (left) and DECK B (right): towards A cuts B, towards B cuts A; in the "
+                "middle both are heard (with CURVE at CUT, both fully). Double-click: the middle. Each deck's CUT and "
+                "TRANSFORM keys cut its own side; HAMSTER (FADER page) turns it round; CURVE sets how sharply it cuts. "
+                "Right-click FADER on the rack to MIDI-learn a controller's fader.");
+    setDoubleClickReturnValue (true, 0.5);
     setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
     startTimerHz (30);
 }
 
 void DeckCrossfader::timerCallback()
 {
-    const auto gain = processor.getDeck().getFaderGain();
+    const std::array<float, 2> gain { processor.getDeck (0).getFaderGain(), processor.getDeck (1).getFaderGain() };
     const auto hamster = processor.getParameters().getRawParameterValue (ParamIDs::deckHamster)->load() > 0.5f;
-    if (std::abs (gain - shownGain) > 0.01f || hamster != shownHamster)
+    if (std::abs (gain[0] - shownGain[0]) > 0.01f || std::abs (gain[1] - shownGain[1]) > 0.01f || hamster != shownHamster)
     {
         shownGain = gain;
         shownHamster = hamster;
@@ -400,22 +431,33 @@ void DeckCrossfader::paint (juce::Graphics& g)
         g.setColour (ParagonColours::textDim.withAlpha (k % 5 == 0 ? 0.7f : 0.35f));
         g.fillRect (juce::Rectangle<float> (x - 0.5f, slot.getY() - (k % 5 == 0 ? 12.0f : 8.0f), 1.0f, k % 5 == 0 ? 6.0f : 4.0f));
     }
+    // 0.9.0: the A/B fader: A at the left, B at the right (HAMSTER: turned round), each end's name lit as much as its
+    // deck is heard (a CUT or TRANSFORM dims it as they cut).
+    const auto leftDeck = shownHamster ? 1 : 0;
+    const auto endLabel = [&] (int d, juce::Justification where)
+    {
+        g.setColour (ParagonColours::textDim.interpolatedWith (ParagonColours::glow, shownGain[(size_t) d]));
+        g.drawText ("DECK " + ParamIDs::deckNames[d], labels, where, false);
+    };
+    endLabel (leftDeck, juce::Justification::centredLeft);
+    endLabel (1 - leftDeck, juce::Justification::centredRight);
     g.setColour (ParagonColours::textDim);
-    g.drawText (shownHamster ? "DECK" : "CUT", labels, juce::Justification::centredLeft, false);
-    g.drawText (shownHamster ? "CUT" : "DECK", labels, juce::Justification::centredRight, false);
     g.drawText ("CROSSFADER", labels, juce::Justification::centred, false);
 
     g.setColour (juce::Colour (0xff020102));
     g.fillRoundedRectangle (slot, 3.0f);
-    // The travel that's open lit, from the CUT end to the cap (all of it with the fader open), brighter the more the
-    // deck is heard (a CUT or TRANSFORM dims it as they cut).
-    const auto lit = shownHamster ? slot.withLeft (capX) : slot.withRight (capX);
-    g.setColour (ParagonColours::glow.withAlpha (0.25f + 0.75f * shownGain));
-    g.fillRoundedRectangle (lit, 3.0f);
-    if (shownGain > 0.01f)
+    // Each side of the cap lit by the deck whose end it runs to.
+    for (const auto side : { 0, 1 })
     {
-        g.setColour (ParagonColours::glow.withAlpha (0.25f * shownGain));
-        g.fillRoundedRectangle (lit.expanded (0.0f, 4.0f), 5.0f);
+        const auto d = side == 0 ? leftDeck : 1 - leftDeck;
+        const auto lit = side == 0 ? slot.withRight (capX) : slot.withLeft (capX);
+        g.setColour (ParagonColours::glow.withAlpha (0.15f + 0.6f * shownGain[(size_t) d]));
+        g.fillRoundedRectangle (lit, 3.0f);
+        if (shownGain[(size_t) d] > 0.01f)
+        {
+            g.setColour (ParagonColours::glow.withAlpha (0.2f * shownGain[(size_t) d]));
+            g.fillRoundedRectangle (lit.expanded (0.0f, 4.0f), 5.0f);
+        }
     }
 
     const auto cap = juce::Rectangle<float> (26.0f, juce::jmin (inner.getHeight(), 34.0f)).withCentre ({ capX, slot.getCentreY() });
@@ -431,130 +473,165 @@ void DeckCrossfader::paint (juce::Graphics& g)
 
 //==============================================================================
 DeckPage::DeckPage (ParagonX1AudioProcessor& p)
-    : processor (p), platter (p), strip (p), crossfader (p)
+    : processor (p), platter (p, 0), platterB (p, 1), strip (p, 0), stripB (p, 1), crossfader (p)
 {
     auto& state = p.getParameters();
     const auto make = [&state] (auto& list, const char* id, const juce::String& label, const juce::String& tip, bool knob = false)
     {
         list.push_back (std::make_unique<ParamControl> (state, id, label, tip, knob));
     };
-    // DECK: the turntable.
-    make (deckControls, ParamIDs::deckPitch, "PITCH", "The pitch fader: the record's speed, and with it its pitch, up to 16% either way.");
-    make (deckControls, ParamIDs::deckSpeed, "RPM", "33 or 45: 45 plays the record 1.35 times as fast (about 5 semitones up).", true);
-    make (deckControls, ParamIDs::deckStart, "START", "How long the motor takes to bring a stopped record up to speed (PLAY).");
-    make (deckControls, ParamIDs::deckBrake, "BRAKE", "How long the record takes to stop (STOP). Long: a slow tape-stop wind-down.");
-    make (deckControls, ParamIDs::deckSpin, "SPIN", "BACKSPIN: how fast the record is thrown back, times its normal speed.");
-    make (deckControls, ParamIDs::deckSpinTime, "SPIN TIME", "BACKSPIN: how long it takes to slow to a stop.");
-    make (deckControls, ParamIDs::deckReach, "REACH", "How far the pitch wheel moves the record, all the way up or down, in turns of "
-                                                      "the platter (a turn: 1.8 seconds of the record).");
-    make (deckControls, ParamIDs::deckNeedle, "NEEDLE", "How loud the needle's landing is on a DROP: its thump and crackle "
-                                                        "(louder for a harder key).");
-    // FADER: the crossfader.
-    make (faderControls, ParamIDs::deckFader, "FADER", "THE CROSSFADER: how open the deck's channel is (OPEN: heard; CUT: silent). "
-                                                       "The fader under the strip is the same; a controller's fader can be MIDI-learned here.");
+    // Each deck's own (0.9.0: deck A's and DECK B's, the same controls on their own parameters).
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        const auto& ids = ParamIDs::deckIds[d];
+        auto& set = sets[(size_t) d];
+        const auto deckName = "DECK " + ParamIDs::deckNames[d] + ": ";
+        // DECK: the turntable.
+        make (set.deckControls, ids.pitch, "PITCH", deckName + "the pitch fader: the record's speed, and with it its pitch, up to 16% either way.");
+        make (set.deckControls, ids.speed, "RPM", deckName + "33 or 45: 45 plays the record 1.35 times as fast (about 5 semitones up).", true);
+        make (set.deckControls, ids.start, "START", deckName + "how long the motor takes to bring a stopped record up to speed (PLAY).");
+        make (set.deckControls, ids.brake, "BRAKE", deckName + "how long the record takes to stop (STOP). Long: a slow tape-stop wind-down.");
+        make (set.deckControls, ids.spin, "SPIN", deckName + "BACKSPIN: how fast the record is thrown back, times its normal speed.");
+        make (set.deckControls, ids.spinTime, "SPIN TIME", deckName + "BACKSPIN: how long it takes to slow to a stop.");
+        make (set.deckControls, ids.reach, "REACH", deckName + "how far the pitch wheel moves the record (while HAND is this deck), all the way "
+                                                    "up or down, in turns of the platter (a turn: 1.8 seconds of the record).");
+        make (set.deckControls, ids.needle, "NEEDLE", deckName + "how loud the needle's landing is on a DROP: its thump and crackle "
+                                                      "(louder for a harder key).");
+        // CUES: where the drops land, and the keys.
+        for (int cue = 0; cue < 4; ++cue)
+            make (set.cueControls, ids.cues[cue], "CUE " + juce::String (cue + 1),
+                  deckName + "where DROP " + juce::String (cue + 1) + " puts the needle, from the record's start (0%) to its end (100%).");
+        set.keysMenu = std::make_unique<ParamControl> (state, ids.keys, "KEYS", deckName + "the octave its 12 keys start on (deck A: C1, the "
+                                                                                "on-screen keyboard's lowest; DECK B: C3).");
+        set.keysMenu->setCompact (true);
+        // SCRATCH (0.5.0): the scratch library.
+        make (set.scratchControls, ids.scratchReach, "REACH", deckName + "the scratch library's stroke at full velocity, in turns of the platter "
+                                                                         "(a turn: 1.8 seconds of the record). A softer key: down to 40% of it.");
+        make (set.scratchControls, ids.scratchRate, "RATE", deckName + "the techniques at half, normal or double speed (each takes a set number "
+                                                                       "of beats at the song's tempo: BABY half a beat, TRANSFORMER two).", true);
+        set.scratchKeysMenu = std::make_unique<ParamControl> (state, ids.scratchKeys, "SCRATCH KEYS",
+                                                              deckName + "the octave its scratch library's 12 keys start on (a technique a key), or OFF.");
+        set.scratchKeysMenu->setCompact (true);
+        // MIXER (0.6.0): the cartridge, the mixer channel, the record's wear.
+        make (set.mixerControls, ids.cart, "CART", deckName + "the cartridge's voicing: CLEAN (flat), SCRATCH (a presence lift, a softer top, as "
+                                                   "scratch cartridges are known for), WARM (rounder highs, a little low weight). Ours.", true);
+        make (set.mixerControls, ids.eq[0], "LOW", deckName + "the mixer channel's low band (under 250 Hz): up to +6 dB, down, or OFF at the bottom.");
+        make (set.mixerControls, ids.eq[1], "MID", deckName + "the mixer channel's middle band (250 Hz to 2.5 kHz).");
+        make (set.mixerControls, ids.eq[2], "HIGH", deckName + "the mixer channel's high band (over 2.5 kHz).");
+        make (set.mixerControls, ids.filter, "FILTER", deckName + "the DJ filter: left a low-pass sweeping down to 60 Hz, right a high-pass up to "
+                                                       "8 kHz; the centre off.");
+        make (set.mixerControls, ids.filterRes, "RES", deckName + "the FILTER's resonance: the peak it sings with at its cutoff.");
+        make (set.mixerControls, ids.wear, "WEAR", deckName + "a worn record: surface hiss and crackle that move with it (louder as it goes "
+                                                   "faster, silent held) and a warp's once-a-turn wobble. NEW: none.");
+        // ROUTING (0.7.0): the deck into the FX.
+        make (set.routingControls, ids.sendDelay, "TO DELAY", deckName + "how much of the deck (after its fader) goes into DELAY's send, while "
+                                                              "DELAY is on (the FX page's SENDS). Cut the fader and the echoes ring on: an echo out.");
+        make (set.routingControls, ids.sendReverb, "TO REVERB", deckName + "how much of the deck (after its fader) goes into REVERB's send, while "
+                                                                "REVERB is on (the FX page's SENDS).");
+        make (set.routingControls, ids.insert, "INSERT", deckName + "an insert bus for the deck (A-D: the FX page's INSERTS: WAH, DRIVE, GLITCH, "
+                                                         "MOD, LO-FI), as an oscillator's; None: straight into the mix.", true);
+        const char* killNames[] = { "KILL LOW", "KILL MID", "KILL HIGH" };
+        for (int band = 0; band < 3; ++band)
+            make (set.killControls, ids.kill[band], killNames[band], deckName + "kills the band at once: the isolator's cut, as on a battle "
+                                                                                "mixer (a quick ramp, never a click).");
+        set.level = std::make_unique<ParamControl> (state, ids.level, "LEVEL", deckName + "its level, before the rack (EQ, DOMINION...), "
+                                                                                "OUTPUT and the LIMITER, which it goes through as the synth does.");
+    }
+    // The mixer's, shared by the two decks. FADER: the crossfader.
+    make (faderControls, ParamIDs::deckFader, "FADER", "THE CROSSFADER, from DECK A (left) to DECK B (right): towards one cuts the other; in "
+                                                       "the middle both are heard. The fader under the turntables is the same; a controller's "
+                                                       "fader can be MIDI-learned here.");
     make (faderControls, ParamIDs::deckCurve, "CURVE", "How the fader cuts: SMOOTH, a mixing fade (-3 dB at the middle); CUT, a "
                                                        "scratch mixer's, fully open after 1% of its travel.");
-    make (faderControls, ParamIDs::deckTransform, "TRANSFORM", "TRANSFORM's rate: held, the key chops the deck on and off this fast, "
+    make (faderControls, ParamIDs::deckTransform, "TRANSFORM", "TRANSFORM's rate: held, a deck's key chops its side on and off this fast, "
                                                                "in time with the song (1/16: four times a beat).", true);
-    make (faderControls, ParamIDs::deckHamster, "HAMSTER", "Turns the fader round, as many scratch DJs set theirs: the deck's end "
-                                                           "moves to the other side.");
-    // CUES: where the drops land, and the keys.
-    for (int cue = 0; cue < 4; ++cue)
-        make (cueControls, ParamIDs::deckCues[cue], "CUE " + juce::String (cue + 1),
-              "Where DROP " + juce::String (cue + 1) + " puts the needle, from the record's start (0%) to its end (100%).");
-    keysMenu = std::make_unique<ParamControl> (state, ParamIDs::deckKeys, "KEYS", "The octave the deck's 12 keys start on (C1: the "
-                                                                                 "on-screen keyboard's lowest).");
-    keysMenu->setCompact (true);
-    // SCRATCH (0.5.0): the scratch library.
-    make (scratchControls, ParamIDs::deckScratchReach, "REACH", "The scratch library's stroke at full velocity, in turns of the platter "
-                                                                "(a turn: 1.8 seconds of the record). A softer key: down to 40% of it.");
-    make (scratchControls, ParamIDs::deckScratchRate, "RATE", "The techniques at half, normal or double speed (each takes a set number "
-                                                              "of beats at the song's tempo: BABY half a beat, TRANSFORMER two).", true);
-    make (scratchControls, ParamIDs::deckModHand, "MOD HAND", "The mod wheel as a hand on the record (it stays where you leave it, unlike "
-                                                              "the pitch wheel's spring). On, the mod wheel is the deck's, not the synth's.");
-    scratchKeysMenu = std::make_unique<ParamControl> (state, ParamIDs::deckScratchKeys, "SCRATCH KEYS",
-                                                      "The octave the scratch library's 12 keys start on (a technique a key), or OFF.");
-    scratchKeysMenu->setCompact (true);
-    // MIXER (0.6.0): the cartridge, the mixer channel, the record's wear.
-    make (mixerControls, ParamIDs::deckCart, "CART", "The cartridge's voicing: CLEAN (flat), SCRATCH (a presence lift, a softer top, as "
-                                                     "scratch cartridges are known for), WARM (rounder highs, a little low weight). Ours.", true);
-    make (mixerControls, ParamIDs::deckEq[0], "LOW", "The mixer channel's low band (under 250 Hz): up to +6 dB, down, or OFF at the bottom.");
-    make (mixerControls, ParamIDs::deckEq[1], "MID", "The mixer channel's middle band (250 Hz to 2.5 kHz).");
-    make (mixerControls, ParamIDs::deckEq[2], "HIGH", "The mixer channel's high band (over 2.5 kHz).");
-    make (mixerControls, ParamIDs::deckFilter, "FILTER", "The DJ filter: left a low-pass sweeping down to 60 Hz, right a high-pass up to 8 kHz; "
-                                                         "the centre off.");
-    make (mixerControls, ParamIDs::deckFilterRes, "RES", "The FILTER's resonance: the peak it sings with at its cutoff.");
-    make (mixerControls, ParamIDs::deckWear, "WEAR", "A worn record: surface hiss and crackle that move with it (louder as it goes faster, "
-                                                     "silent held) and a warp's once-a-turn wobble. NEW: none.");
-    // ROUTING (0.7.0): the deck into the FX.
-    make (routingControls, ParamIDs::deckSendDelay, "TO DELAY", "How much of the deck (after its fader) goes into DELAY's send, while DELAY "
-                                                                "is on (the FX page's SENDS). Cut the fader and the echoes ring on: an echo out.");
-    make (routingControls, ParamIDs::deckSendReverb, "TO REVERB", "How much of the deck (after its fader) goes into REVERB's send, while "
-                                                                  "REVERB is on (the FX page's SENDS).");
-    make (routingControls, ParamIDs::deckInsert, "INSERT", "An insert bus for the deck (A-D: the FX page's INSERTS: WAH, DRIVE, GLITCH, "
-                                                           "MOD, LO-FI), as an oscillator's; None: straight into the mix.", true);
-    const char* killNames[] = { "KILL LOW", "KILL MID", "KILL HIGH" };
-    for (int band = 0; band < 3; ++band)
-        make (killControls, ParamIDs::deckKill[band], killNames[band], "Kills the band at once: the isolator's cut, as on a battle mixer "
-                                                                      "(a quick ramp, never a click).");
-    level = std::make_unique<ParamControl> (state, ParamIDs::deckLevel, "LEVEL", "The deck's level, before the rack (EQ, DOMINION...), "
-                                                                                 "OUTPUT and the LIMITER, which it goes through as the synth does.");
+    make (faderControls, ParamIDs::deckHamster, "HAMSTER", "Turns the fader round, as many scratch DJs set theirs: DECK A's end "
+                                                           "moves to the right.");
+    // SCRATCH: MOD HAND and HAND.
+    make (handControls, ParamIDs::deckModHand, "MOD HAND", "The mod wheel as a hand on HAND's record (it stays where you leave it, unlike "
+                                                           "the pitch wheel's spring). On, the mod wheel is the deck's, not the synth's.");
+    make (handControls, ParamIDs::deckHand, "HAND", "Which deck your hand is on: the one the pitch wheel (and MOD HAND) moves. (If that "
+                                                    "deck's off and the other's on, the other.) Each turntable can be grabbed with the mouse.", true);
 
     // On the rack, in its pearl black (lettered in its ink whatever the window's finish).
     Finish::paintAs (Finish::Type::pearlBlack);
-    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls, &routingControls })
+    for (auto& set : sets)
+    {
+        for (auto* list : { &set.deckControls, &set.cueControls, &set.scratchControls, &set.mixerControls, &set.killControls, &set.routingControls })
+            for (auto& c : *list)
+            {
+                c->setRack (true);
+                rack.addChildComponent (*c);
+            }
+        for (auto* c : { set.keysMenu.get(), set.scratchKeysMenu.get(), set.level.get() })
+        {
+            c->setRack (true);
+            rack.addChildComponent (*c);
+        }
+    }
+    for (auto* list : { &faderControls, &handControls })
         for (auto& c : *list)
         {
             c->setRack (true);
             rack.addChildComponent (*c);
         }
-    scratchKeysMenu->setRack (true);
-    rack.addChildComponent (*scratchKeysMenu);
-    for (auto* c : { keysMenu.get(), level.get() })
-    {
-        c->setRack (true);
-        rack.addAndMakeVisible (*c);
-    }
     Finish::paintAs (std::nullopt);
 
-    // The rack's keys: ON (lit while the deck is on), LOAD, HOUSE.
-    for (auto* key : { &onKey, &loadKey, &houseKey })
+    // The rack's keys: DECK A and B (which deck it shows), ON (lit while the deck is on), LOAD, HOUSE.
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        auto& deckKey = deckKeys[(size_t) d];
+        deckKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        deckKey.setComponentID (d == 0 ? "deckShowA" : "deckShowB");
+        deckKey.setRadioGroupId (0x7d3c);
+        deckKey.setClickingTogglesState (true);
+        deckKey.setTooltip ("Shows DECK " + ParamIDs::deckNames[d] + " on the rack: its controls, its record on the screen; the keys under "
+                            "the turntables play it. (Grabbing a turntable shows its deck too.)");
+        deckKey.onClick = [this, d] { selectDeck (d); };
+        rack.addAndMakeVisible (deckKey);
+
+        auto& onKey = sets[(size_t) d].onKey;
+        onKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        onKey.setComponentID (d == 0 ? "deckOn" : "deckBOn");
+        onKey.setClickingTogglesState (true);
+        onKey.setTooltip ("DECK " + ParamIDs::deckNames[d] + " on or off. On, its 12 keys (CUES > KEYS) play the deck, not the synth (and the "
+                          "pitch wheel, while HAND is this deck); off, the synth has them all, as on PR7-K.");
+        sets[(size_t) d].onAttachment = std::make_unique<juce::ButtonParameterAttachment> (*state.getParameter (ParamIDs::deckIds[d].on), onKey);
+        rack.addChildComponent (onKey);
+    }
+    for (auto* key : { &loadKey, &houseKey })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         rack.addAndMakeVisible (*key);
     }
-    onKey.setComponentID ("deckOn");
-    onKey.setClickingTogglesState (true);
-    onKey.setTooltip ("THE DECK on or off. On, its 12 keys (CUES > KEYS) and the pitch wheel play the deck, not the synth; "
-                      "off, the synth has them all, as on PR7-K.");
-    onAttachment = std::make_unique<juce::ButtonParameterAttachment> (*state.getParameter (ParamIDs::deckOn), onKey);
     loadKey.setComponentID ("deckLoad");
-    loadKey.setTooltip ("Puts a record on the deck: a sample from a file (WAV, AIFF, FLAC or Ogg, up to 3 minutes). "
-                        "The project remembers it.");
+    loadKey.setTooltip ("Puts a record on the deck the rack shows: a sample from a file (WAV, AIFF, FLAC or Ogg, up to 3 minutes). "
+                        "The project and your presets remember it.");
     houseKey.setComponentID ("deckHouse");
-    houseKey.setTooltip ("Puts THE HOUSE RECORD on the deck, our own built-in scratch record: an \"ahh\", a horn stab, "
+    houseKey.setTooltip ("Puts THE HOUSE RECORD on the deck the rack shows, our own built-in scratch record: an \"ahh\", a horn stab, "
                          "a drum break and a 1 kHz tone, two seconds apart, at the cues' first places.");
     loadKey.onClick = [this]
     {
-        chooser = std::make_unique<juce::FileChooser> ("Put a record on the deck", juce::File(), "*.wav;*.aif;*.aiff;*.flac;*.ogg");
+        const auto d = selected;
+        chooser = std::make_unique<juce::FileChooser> ("Put a record on DECK " + ParamIDs::deckNames[d], juce::File(), "*.wav;*.aif;*.aiff;*.flac;*.ogg");
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [this] (const juce::FileChooser& c)
+                              [this, d] (const juce::FileChooser& c)
                               {
                                   if (c.getResult().existsAsFile())
                                   {
-                                      processor.loadDeckRecord (c.getResult());
+                                      processor.loadDeckRecord (c.getResult(), d);
                                       processor.deckRecordChangedByUser();
                                   }
                                   timerCallback();
                               });
     };
-    houseKey.onClick = [this] { processor.useHouseRecord(); processor.deckRecordChangedByUser(); timerCallback(); };
+    houseKey.onClick = [this] { processor.useHouseRecord (selected); processor.deckRecordChangedByUser(); timerCallback(); };
     rack.onPageChanged = [this] { showRackPage(); };
-    // A technique clicked on the SCRATCH screen: its key pressed, as long as the mouse is down (as from MIDI).
+    // A technique clicked on the SCRATCH screen: its key pressed on the deck shown, as long as the mouse is down (as from MIDI).
     rack.onScratchPressed = [this] (int technique, bool down)
     {
-        const auto first = processor.getDeckSettings().firstScratchKey;
-        if (first < 0 || processor.getParameters().getRawParameterValue (ParamIDs::deckOn)->load() <= 0.5f)
+        const auto first = processor.getDeckSettings (selected).firstScratchKey;
+        if (first < 0 || processor.getParameters().getRawParameterValue (ParamIDs::deckIds[selected].on)->load() <= 0.5f)
             return;   // OFF, or the deck off: the key would play the synth
         if (down)
             processor.getKeyboardState().noteOn (1, first + technique, 0.9f);
@@ -575,10 +652,10 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
         { deck::Key::drop2, "Drops the needle at CUE 2, the motor on." },
         { deck::Key::drop3, "Drops the needle at CUE 3, the motor on." },
         { deck::Key::drop4, "Drops the needle at CUE 4, the motor on." },
-        { deck::Key::cut, "THE CROSSFADER flipped while it's held: open to cut, or (the fader cut) a tap that opens it. With "
-                          "the hand: chirps, stabs." },
-        { deck::Key::transform, "THE CROSSFADER chopped on and off in time with the song while it's held, at TRANSFORM's rate "
-                                "(FADER page): a transformer scratch." } };
+        { deck::Key::cut, "The deck's side of THE CROSSFADER flipped while it's held: open to cut, or (cut) a tap that opens it. "
+                          "With the hand: chirps, stabs." },
+        { deck::Key::transform, "The deck's side of THE CROSSFADER chopped on and off in time with the song while it's held, at "
+                                "TRANSFORM's rate (FADER page): a transformer scratch." } };
     for (const auto& [key, tip] : shown)
     {
         auto button = std::make_unique<juce::TextButton> (deck::keyNames[(int) key]);
@@ -608,23 +685,32 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
 
     styleButton (rackButton);
     rackButton.setComponentID ("deckRackButton");
-    rackButton.setTooltip ("Hides the rack (the turntable gets the page's height) or shows it again.");
+    rackButton.setTooltip ("Hides the rack (the turntables get the page's height) or shows it again.");
     rackButton.onClick = [this] { setRackShown (! rackShown); };
     addAndMakeVisible (rackButton);
 
-    for (auto* label : { &speedLabel, &keysLabel })
+    for (auto* label : { &speedLabel, &speedLabelB, &keysLabel })
     {
         label->setColour (juce::Label::textColourId, ParagonColours::textDim);
         addAndMakeVisible (*label);
     }
-    speedLabel.setFont (juce::FontOptions (20.0f, juce::Font::bold));
-    speedLabel.setJustificationType (juce::Justification::centred);
-    speedLabel.setColour (juce::Label::textColourId, ParagonColours::accent);
+    for (auto* label : { &speedLabel, &speedLabelB })
+    {
+        label->setFont (juce::FontOptions (18.0f, juce::Font::bold));
+        label->setJustificationType (juce::Justification::centred);
+        label->setColour (juce::Label::textColourId, ParagonColours::accent);
+    }
     keysLabel.setFont (juce::FontOptions (11.5f, juce::Font::bold));
+    keysLabel.setMinimumHorizontalScale (0.7f);
 
-    addAndMakeVisible (platter);
-    addAndMakeVisible (strip);
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        getPlatter (d).onGrab = [this, d] { selectDeck (d); };
+        addAndMakeVisible (getPlatter (d));
+        addAndMakeVisible (getStrip (d));
+    }
     addAndMakeVisible (crossfader);
+    selectDeck (0);
     setRackShown (true);
     timerCallback();
     startTimerHz (20);
@@ -632,7 +718,24 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
 
 DeckPage::~DeckPage()
 {
-    processor.setDeckMouseHand (false, 0.0f);
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+        processor.setDeckMouseHand (false, 0.0f, d);
+}
+
+void DeckPage::selectDeck (int d)
+{
+    // 0.9.0: the deck the rack shows and the keys play. Keys held on the other deck let go first (their note-offs).
+    d = juce::jlimit (0, ParamIDs::numDecks - 1, d);
+    if (d != selected)
+        for (auto& k : keys)
+            if (k.button->isDown())
+                press (k.key, false);
+    selected = d;
+    deckKeys[(size_t) d].setToggleState (true, juce::dontSendNotification);
+    for (int other = 0; other < ParamIDs::numDecks; ++other)
+        getPlatter (other).setSelected (other == d);
+    showRackPage();
+    timerCallback();
 }
 
 void DeckPage::setRackShown (bool shown)
@@ -647,26 +750,35 @@ void DeckPage::setRackShown (bool shown)
 void DeckPage::showRackPage()
 {
     const auto page = rack.getPage();
-    for (auto& c : deckControls)
-        c->setVisible (page == DeckRack::Page::deck);
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        auto& set = sets[(size_t) d];
+        const auto mine = d == selected;
+        for (auto& c : set.deckControls)
+            c->setVisible (mine && page == DeckRack::Page::deck);
+        for (auto& c : set.cueControls)
+            c->setVisible (mine && page == DeckRack::Page::cues);
+        set.keysMenu->setVisible (mine && page == DeckRack::Page::cues);
+        for (auto& c : set.scratchControls)
+            c->setVisible (mine && page == DeckRack::Page::scratch);
+        set.scratchKeysMenu->setVisible (mine && page == DeckRack::Page::scratch);
+        for (auto* list : { &set.mixerControls, &set.killControls })
+            for (auto& c : *list)
+                c->setVisible (mine && page == DeckRack::Page::mixer);
+        for (auto& c : set.routingControls)
+            c->setVisible (mine && page == DeckRack::Page::routing);
+        set.level->setVisible (mine);
+        set.onKey.setVisible (mine);
+    }
     for (auto& c : faderControls)
         c->setVisible (page == DeckRack::Page::fader);
-    for (auto& c : cueControls)
-        c->setVisible (page == DeckRack::Page::cues);
-    keysMenu->setVisible (page == DeckRack::Page::cues);
-    for (auto& c : scratchControls)
+    for (auto& c : handControls)
         c->setVisible (page == DeckRack::Page::scratch);
-    for (auto* list : { &mixerControls, &killControls })
-        for (auto& c : *list)
-            c->setVisible (page == DeckRack::Page::mixer);
-    for (auto& c : routingControls)
-        c->setVisible (page == DeckRack::Page::routing);
-    scratchKeysMenu->setVisible (page == DeckRack::Page::scratch);
 }
 
 void DeckPage::press (deck::Key key, bool down)
 {
-    const auto note = processor.getDeckSettings().firstKey + (int) key;
+    const auto note = processor.getDeckSettings (selected).firstKey + (int) key;
     if (down)
         processor.getKeyboardState().noteOn (1, note, 1.0f);
     else
@@ -675,27 +787,30 @@ void DeckPage::press (deck::Key key, bool down)
 
 void DeckPage::timerCallback()
 {
-    const auto on = processor.getParameters().getRawParameterValue (ParamIDs::deckOn)->load() > 0.5f;
+    const auto isOn = [this] (int d) { return processor.getParameters().getRawParameterValue (ParamIDs::deckIds[d].on)->load() > 0.5f; };
+    const auto on = isOn (selected);
     for (auto& k : keys)
         k.button->setEnabled (on);   // off, the keys would play the synth
 
-    const auto& deck = processor.getDeck();
-    const auto speed = deck.getSpeed();
-    juce::String state;
-    if (! on)
-        state = "DECK OFF";
-    else if (std::abs (speed) < 0.0005f)
-        state = "STOPPED";
-    else
-        state = juce::String (std::abs (speed) * 100.0f, 1) + "%" + (speed < 0.0f ? "  BACKWARDS" : "");
-    speedLabel.setText (state, juce::dontSendNotification);
+    // Under each turntable: how it's turning.
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+    {
+        const auto speed = processor.getDeck (d).getSpeed();
+        const auto text = ! isOn (d) ? juce::String ("DECK " + ParamIDs::deckNames[d] + " OFF")
+                        : std::abs (speed) < 0.0005f ? juce::String ("STOPPED")
+                        : juce::String (std::abs (speed) * 100.0f, 1) + "%" + (speed < 0.0f ? "  BACKWARDS" : "");
+        (d == 0 ? speedLabel : speedLabelB).setText (text, juce::dontSendNotification);
+    }
 
-    // The rack's screen: the record, how it's turning, where the needle is.
-    const auto settings = processor.getDeckSettings();
-    const auto record = processor.getDeckRecord();
-    const auto problem = processor.getDeckRecordProblem();
+    // The rack's screen: the deck it shows, its record, how it's turning, where the needle is.
+    const auto& deck = processor.getDeck (selected);
+    const auto speed = deck.getSpeed();
+    const auto settings = processor.getDeckSettings (selected);
+    const auto record = processor.getDeckRecord (selected);
+    const auto problem = processor.getDeckRecordProblem (selected);
+    const auto hand = processor.handDeck() == selected;
     DeckRack::Screen screen;
-    screen.caption = processor.getDeckRecordFile().isEmpty() ? "THE RECORD: BUILT IN" : "THE RECORD";
+    screen.caption = "DECK " + ParamIDs::deckNames[selected] + (processor.getDeckRecordFile (selected).isEmpty() ? "  -  THE RECORD: BUILT IN" : "  -  THE RECORD");
     screen.record = record != nullptr ? record->name : juce::String ("NO RECORD");
     screen.state = ! on ? juce::String ("OFF")
                  : deck.getScratch() >= 0 ? deck::scratchNames[deck.getScratch()]   // 0.5.0: the technique playing
@@ -703,15 +818,19 @@ void DeckPage::timerCallback()
     screen.line1 = record != nullptr ? juce::String (deck.getPositionSeconds(), 1) + " / " + juce::String (record->seconds(), 1) + " S" : juce::String();
     screen.problem = problem.isNotEmpty();
     screen.line2 = screen.problem ? problem + ": THE HOUSE RECORD MEANWHILE"
-                                  : "KEYS FROM " + noteName (settings.firstKey) + "  -  PITCH WHEEL: THE HAND";
+                                  : "KEYS FROM " + noteName (settings.firstKey) + (hand ? "  -  PITCH WHEEL: THE HAND" : "  -  HAND: DECK " + ParamIDs::deckNames[1 - selected]);
     rack.setScreen (screen);
     rack.setOn (on);
-    const auto peak = processor.takeDeckPeak();
+    const auto peak = processor.takeDeckPeak (selected);
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+        if (d != selected)
+            processor.takeDeckPeak (d);   // (emptied, so a deck shown later doesn't show an old peak)
     rack.setMeterDb (peak > 1.0e-5f ? juce::Decibels::gainToDecibels (peak) : -100.0f);
     rack.setFaderGain (deck.getFaderGain());
-    rack.setFaderInfo ({ "CUT " + noteName (settings.firstKey + (int) deck::Key::cut) + "    TRANSFORM " + noteName (settings.firstKey + (int) deck::Key::transform),
-                         "CUT FLIPS IT WHILE HELD; TRANSFORM CHOPS IT AT " + deck::transformNames[settings.transformRate],
-                         settings.hamster ? juce::String ("HAMSTER: TURNED ROUND") : juce::String ("THE DECK AT THE FADER'S RIGHT") });
+    rack.setFaderInfo ({ "DECK " + ParamIDs::deckNames[selected] + ":  CUT " + noteName (settings.firstKey + (int) deck::Key::cut)
+                             + "    TRANSFORM " + noteName (settings.firstKey + (int) deck::Key::transform),
+                         "CUT FLIPS ITS SIDE WHILE HELD; TRANSFORM CHOPS IT AT " + deck::transformNames[settings.transformRate],
+                         settings.hamster ? juce::String ("HAMSTER: A AT THE RIGHT, B AT THE LEFT") : juce::String ("A AT THE FADER'S LEFT, B AT ITS RIGHT") });
     juce::StringArray keyMap;
     for (int k = 0; k < deck::numKeys; ++k)
         if (deck::keyNames[k].isNotEmpty())
@@ -723,36 +842,43 @@ void DeckPage::timerCallback()
     rack.setScratchList (scratches, deck.getScratch());
     {
         // ROUTING's screen: whether the sends' effects are on (a send to one that's off does nothing), the bus.
+        const auto& ids = ParamIDs::deckIds[selected];
         const auto value = [this] (const char* id) { return processor.getParameters().getRawParameterValue (id)->load(); };
-        const auto bus = juce::roundToInt (value (ParamIDs::deckInsert));
+        const auto bus = juce::roundToInt (value (ids.insert));
         rack.setRoutingInfo ({
             juce::String ("DELAY ") + (value (ParamIDs::delayOn) > 0.5f ? "ON" : "OFF: TURN IT ON (FX > SENDS)") + "   TO IT "
-                + juce::String (juce::roundToInt (value (ParamIDs::deckSendDelay) * 100.0f)) + "%",
+                + juce::String (juce::roundToInt (value (ids.sendDelay) * 100.0f)) + "%",
             juce::String ("REVERB ") + (value (ParamIDs::reverbOn) > 0.5f ? "ON" : "OFF: TURN IT ON (FX > SENDS)") + "   TO IT "
-                + juce::String (juce::roundToInt (value (ParamIDs::deckSendReverb) * 100.0f)) + "%",
+                + juce::String (juce::roundToInt (value (ids.sendReverb) * 100.0f)) + "%",
             bus > 0 ? "INSERT BUS " + ParamIDs::insertBusNames[bus] + ": ITS EFFECTS ON FX > INSERTS" : juce::String ("INSERT: NONE, STRAIGHT INTO THE MIX"),
             "THE SENDS TAKE THE DECK AFTER ITS FADER: CUT IT AND THE ECHOES RING ON",
-            "THE RECORD IS SAVED WITH YOUR PRESETS AND YOUR PROJECTS" });
+            "BOTH DECKS' RECORDS ARE SAVED WITH YOUR PRESETS AND PROJECTS" });
     }
 
-    juce::String legend ("KEYS:  ");
+    juce::String legend ("DECK " + ParamIDs::deckNames[selected] + " KEYS:  ");
     for (const auto& k : keys)
         legend << noteName (settings.firstKey + (int) k.key) << " " << deck::keyNames[(int) k.key] << "   ";
-    legend << "PITCH WHEEL: THE HAND";
+    legend << "PITCH WHEEL: DECK " << ParamIDs::deckNames[processor.handDeck()];
     keysLabel.setText (legend, juce::dontSendNotification);
     if (! rackShown)
-        repaint (0, 0, getWidth(), 44);   // the header names the record while the rack's hidden
+        repaint (0, 0, getWidth(), 44);   // the header names the records while the rack's hidden
 }
 
 std::vector<ParamControl*> DeckPage::getShownControls()
 {
     std::vector<ParamControl*> result;
-    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls, &routingControls })
+    for (auto& set : sets)
+    {
+        for (auto* list : { &set.deckControls, &set.cueControls, &set.scratchControls, &set.mixerControls, &set.killControls, &set.routingControls })
+            for (auto& c : *list)
+                result.push_back (c.get());
+        result.push_back (set.keysMenu.get());
+        result.push_back (set.scratchKeysMenu.get());
+        result.push_back (set.level.get());
+    }
+    for (auto* list : { &faderControls, &handControls })
         for (auto& c : *list)
             result.push_back (c.get());
-    result.push_back (keysMenu.get());
-    result.push_back (scratchKeysMenu.get());
-    result.push_back (level.get());
     return result;
 }
 
@@ -764,12 +890,14 @@ void DeckPage::paint (juce::Graphics& g)
     // The rack hidden: a header naming the deck and its record.
     g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
     g.setGradientFill (ParagonLookAndFeel::menuHighlight (juce::Rectangle<float> (24.0f, 16.0f, 120.0f, 24.0f)));
-    g.drawText ("THE DECK", juce::Rectangle<int> (24, 12, 120, 26), juce::Justification::centredLeft, false);
+    g.drawText ("THE DECKS", juce::Rectangle<int> (24, 12, 120, 26), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    const auto record = processor.getDeckRecord();
-    g.drawText (record != nullptr ? record->name + "  (" + juce::String (record->seconds(), 1) + " s)" : juce::String(),
-                juce::Rectangle<int> (150, 12, 500, 26), juce::Justification::centredLeft, false);
+    juce::String names;
+    for (int d = 0; d < ParamIDs::numDecks; ++d)
+        if (const auto record = processor.getDeckRecord (d); record != nullptr)
+            names << "DECK " << ParamIDs::deckNames[d] << ": " << record->name << "  (" << juce::String (record->seconds(), 1) << " s)     ";
+    g.drawText (names, juce::Rectangle<int> (150, 12, 800, 26), juce::Justification::centredLeft, false);
 }
 
 void DeckPage::resized()
@@ -779,60 +907,71 @@ void DeckPage::resized()
     {
         rack.setBounds (area.removeFromTop (DeckRack::preferredHeight));
         area.removeFromTop (4);
-        // The rack's controls in the places it gives.
-        for (int i = 0; i < (int) deckControls.size(); ++i)
-            deckControls[(size_t) i]->setBounds (rack.knobCell (i));
+        // The rack's controls in the places it gives (both decks' in the same places: the one shown is visible).
+        for (auto& set : sets)
+        {
+            for (auto* list : { &set.deckControls, &set.cueControls, &set.scratchControls, &set.routingControls })
+                for (int i = 0; i < (int) list->size(); ++i)
+                    (*list)[(size_t) i]->setBounds (rack.knobCell (i));
+            // MIXER: CART, LOW, MID, HIGH, the KILLs stacked beside them, FILTER, RES, WEAR.
+            for (int i = 0; i < (int) set.mixerControls.size(); ++i)
+                set.mixerControls[(size_t) i]->setBounds (rack.knobCell (i < 4 ? i : i + 1));
+            for (int band = 0; band < (int) set.killControls.size(); ++band)
+                set.killControls[(size_t) band]->setBounds (rack.killCell (band));
+            set.keysMenu->setBounds (rack.menuCell().reduced (6, 2));
+            set.scratchKeysMenu->setBounds (rack.menuCell().reduced (6, 2));
+            set.level->setBounds (rack.sideKnobCell());
+            set.onKey.setBounds (rack.keyCell (0));
+        }
         for (int i = 0; i < (int) faderControls.size(); ++i)
             faderControls[(size_t) i]->setBounds (rack.knobCell (i));
-        for (int i = 0; i < (int) cueControls.size(); ++i)
-            cueControls[(size_t) i]->setBounds (rack.knobCell (i));
-        for (int i = 0; i < (int) scratchControls.size(); ++i)
-            scratchControls[(size_t) i]->setBounds (rack.knobCell (i));
-        // MIXER: CART, LOW, MID, HIGH, the KILLs stacked beside them, FILTER, RES, WEAR.
-        for (int i = 0; i < (int) mixerControls.size(); ++i)
-            mixerControls[(size_t) i]->setBounds (rack.knobCell (i < 4 ? i : i + 1));
-        for (int band = 0; band < (int) killControls.size(); ++band)
-            killControls[(size_t) band]->setBounds (rack.killCell (band));
-        for (int i = 0; i < (int) routingControls.size(); ++i)
-            routingControls[(size_t) i]->setBounds (rack.knobCell (i));
-        keysMenu->setBounds (rack.menuCell().reduced (6, 2));
-        scratchKeysMenu->setBounds (rack.menuCell().reduced (6, 2));
-        level->setBounds (rack.sideKnobCell());
-        onKey.setBounds (rack.keyCell (0));
+        // SCRATCH: each deck's REACH and RATE, then the mixer's MOD HAND and HAND.
+        for (int i = 0; i < (int) handControls.size(); ++i)
+            handControls[(size_t) i]->setBounds (rack.knobCell (2 + i));
+        for (int d = 0; d < ParamIDs::numDecks; ++d)
+            deckKeys[(size_t) d].setBounds (rack.deckKeyCell (d));
         loadKey.setBounds (rack.keyCell (1));
         houseKey.setBounds (rack.keyCell (2));
     }
     else
         area.removeFromTop (36);   // the header (painted)
 
-    // THE TURNTABLE at its picture's shape, as big as the height allows (at most half the page).
-    const auto turntableHeight = area.getHeight() - 30;
-    auto left = area.removeFromLeft (juce::jmin (area.getWidth() / 2, juce::roundToInt ((float) turntableHeight * DeckPlatter::pictureAspect)));
-    speedLabel.setBounds (left.removeFromBottom (30));
+    // 0.9.0: THE TURNTABLES, DECK A at the left and DECK B at the right as on a DJ's table, each at its picture's
+    // shape, as big as the height allows (at most 30% of the width each: the mixer between them gets the rest; 32%
+    // with the rack hidden: more and the keys between them wouldn't fit their names).
+    const auto labelHeight = 28;
+    const auto width = juce::jmin (area.getWidth() * (rackShown ? 30 : 32) / 100, juce::roundToInt ((float) (area.getHeight() - labelHeight) * DeckPlatter::pictureAspect));
+    auto left = area.removeFromLeft (width);
+    auto right = area.removeFromRight (width);
+    speedLabel.setBounds (left.removeFromBottom (labelHeight));
     platter.setBounds (left);
-    area.removeFromLeft (16);
+    speedLabelB.setBounds (right.removeFromBottom (labelHeight));
+    platterB.setBounds (right);
+    area.reduce (14, 0);
 
-    // Beside it: HIDE / SHOW RACK, the record's strip, the keys, the crossfader, the key legend.
+    // Between them: HIDE / SHOW RACK, the records' strips, the shown deck's keys, the legend, the crossfader.
     auto top = area.removeFromTop (28);
     rackButton.setBounds ((rackShown ? top : juce::Rectangle<int> (getWidth() - 150, 12, 130, 28)).removeFromRight (130));
     area.removeFromTop (4);
-    // The ten keys in a row where they fit with their names whole (about 90 px each), else in two rows of five.
-    const auto twoRows = (area.getWidth() - 9 * 5) / 10 < 90;
-    const auto keysHeight = twoRows ? 2 * 40 + 6 : 44;
-    const auto spare = area.getHeight() - (keysHeight + 10 + 22 + 10);
-    strip.setBounds (area.removeFromTop (juce::jmax (90, spare * 55 / 100)));
-    area.removeFromTop (10);
+    const auto keysHeight = 2 * 34 + 6;
+    const auto faderHeight = juce::jmin (76, area.getHeight() / 6);
+    const auto spare = area.getHeight() - (keysHeight + 8 + 20 + 8 + faderHeight + 3 * 8);
+    const auto stripHeight = juce::jlimit (60, 130, spare / 2);
+    strip.setBounds (area.removeFromTop (stripHeight));
+    area.removeFromTop (8);
+    stripB.setBounds (area.removeFromTop (stripHeight));
+    area.removeFromTop (8);
     auto keyArea = area.removeFromTop (keysHeight);
-    const auto perRow = twoRows ? 5 : 10;
+    constexpr int perRow = 5;
     for (size_t k = 0; k < keys.size(); ++k)
     {
-        auto row = twoRows ? (k < 5 ? keyArea.withHeight (40) : keyArea.withTrimmedTop (46)) : keyArea;
-        const auto width = (row.getWidth() - (perRow - 1) * 5) / perRow;
+        auto row = k < perRow ? keyArea.withHeight (34) : keyArea.withTrimmedTop (40);
+        const auto keyWidth = (row.getWidth() - (perRow - 1) * 5) / perRow;
         const auto column = (int) k % perRow;
-        keys[k].button->setBounds (row.getX() + column * (width + 5), row.getY(), width, row.getHeight());
+        keys[k].button->setBounds (row.getX() + column * (keyWidth + 5), row.getY(), keyWidth, row.getHeight());
     }
-    area.removeFromTop (10);
-    keysLabel.setBounds (area.removeFromBottom (22));
-    area.removeFromBottom (8);
-    crossfader.setBounds (area.withSizeKeepingCentre (area.getWidth(), juce::jmin (area.getHeight(), 80)));
+    area.removeFromTop (8);
+    keysLabel.setBounds (area.removeFromTop (20));
+    area.removeFromTop (8);
+    crossfader.setBounds (area.removeFromBottom (faderHeight));
 }

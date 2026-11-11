@@ -24,13 +24,22 @@ PR7-T is built in stages, each one released:
 | **2** | **The deck engine**: a record played at whatever speed and direction the motor and your hand give it (backwards too), the motor's start and brake, BACKSPIN, HOLD, needle drops to four cues, the pitch wheel as your hand; clean at any speed | **Works (0.2.0)** |
 | **3** | **The crossfader**: its cut curve, reverse ("hamster"), CUT and TRANSFORM keys, a fader on the page | **Works (0.4.0)** |
 | **4** | **The scratch library**: baby, chirp, transformer, flare, crab, tear... as hand-and-fader moves, synced to tempo, played from keys | **Works (0.5.0)** |
-| 5 | The platter view: a drawn turntable and fader to scratch live with the mouse | **Started (0.3.0)**: our own 3D turntable in the family's "Tron" look, its platter turning and arm moving as it plays, the record grabbed with the mouse; the fader to come |
+| **5** | **The platter view**: a drawn turntable and fader to scratch live with the mouse | **Works (0.3.0, 0.4.0)**: our own 3D turntables in the family's "Tron" look, the platters turning and arms moving as they play, a record grabbed with the mouse; the crossfader to drag |
 | **6** | **The sound**: the cartridge, the mixer channel's isolator EQ and kills, its filter, a worn record | **Works (0.6.0)** |
 | 7 | **Into the FX**: the deck's sends to DELAY and REVERB, an insert bus; the record saved in presets | **Works (0.7.0)** |
+| 8 | **Real scratches**: the scratch library tuned to measurements of DJs | **Works (0.8.0)** |
+| 9 | **The second deck**: DECK B, and an A/B crossfader between the two | **Works (0.9.0)** |
 
 ## Using it
 
-- **DECK** (the tab beside SYNTH): the turntable.
+- **DECK** (the tab beside SYNTH): the turntables.
+  - **Two decks** (0.9.0): **DECK A** at the left, **DECK B** at the right, the mixer between them (the records'
+    strips, the keys, the crossfader), as on a DJ's table. DECK B is a whole second turntable with its own record,
+    keys (from **C3**; its scratch keys from **C4**), motor, cues and mixer channel, off until you turn it **ON**.
+    The rack shows one deck at a time: the **A** and **B** keys under its screen choose which (grabbing a turntable
+    shows its deck too). **HAND** (SCRATCH page) says which deck the pitch wheel moves.
+  - **The crossfader** is A/B (0.9.0): towards A cuts B, towards B cuts A, in the middle both are heard. Each deck's
+    **CUT** and **TRANSFORM** keys cut only its own side.
   - **The rack** (0.4.0, as PR7-I's): the deck's controls on one of the family's rack units across the top, in three
     pages (DECK, FADER, CUES, SCRATCH, MIXER, ROUTING); the screen shows the record and how it's turning; **ON**, **LOAD**, **HOUSE** under
     it; **DECK OUT**: the deck's meter and **LEVEL**. **HIDE RACK** gives the turntable the page's height.
@@ -42,9 +51,10 @@ PR7-T is built in stages, each one released:
     your song (**RATE**: half, normal, double), its stroke as long as the key is hard (up to **REACH**), repeating
     while held. 0.8.0 tuned them to measurements of real DJs (K. F. Hansen's research at KTH). **MOD HAND** makes the mod wheel a hand on the record. The rack's SCRATCH page lists them: click one
     to play it.
-  - **The crossfader** (0.4.0): **FADER** (open by default), **CURVE** (SMOOTH to a scratch CUT), **HAMSTER** (turned
-    round), the **CUT** key (F#: flips it while held) and **TRANSFORM** (G#: chops it in time with your song at
-    TRANSFORM's rate). Drag the fader under the record, or MIDI-learn FADER (right-click) to a controller's fader.
+  - **The crossfader** (0.4.0): **FADER** (the middle by default), **CURVE** (SMOOTH to a scratch CUT), **HAMSTER**
+    (turned round), the **CUT** key (F#: flips the deck's side while held) and **TRANSFORM** (G#: chops it in time with
+    your song at TRANSFORM's rate). Drag the fader between the turntables, or MIDI-learn FADER (right-click) to a
+    controller's fader.
   - **ON**: the deck's on or off. **Off by default**, so every preset plays as it does on PR7-K. On, the deck's 12
     keys (**KEYS**, from C1 by default, the on-screen keyboard's lowest octave) and the **pitch wheel** are the deck's
     and not the synth's.

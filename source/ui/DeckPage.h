@@ -5,7 +5,8 @@
 #include "ui/DeckRack.h"
 
 // THE DECK's page (PR7-T 0.2.0): the turntable. 0.4.0: its controls on a rack unit across the top (DeckRack, PR7-I's),
-// the crossfader under the strip.
+// the crossfader under the strip. 0.9.0: two turntables, DECK A left and DECK B right, the mixer between them (the
+// records' strips, the shown deck's keys, the A/B crossfader); the rack shows one deck at a time.
 //  - THE TURNTABLE (0.3.0): our own deck in the PR7 family's "Tron" look (as PR7-D's kit, PR7-I's guitar and PR7-O's
 //    strings), rendered in Blender (resources/deck/): gloss black, its neon edge running pink to red to orange. The
 //    platter turns as the record does and the arm moves in as it plays through; the neon brightens as it turns. Grab
@@ -20,7 +21,7 @@ class DeckPlatter final : public juce::Component,
                           private juce::Timer
 {
 public:
-    explicit DeckPlatter (ParagonX1AudioProcessor&);
+    explicit DeckPlatter (ParagonX1AudioProcessor&, int deckIndex = 0);   // 0.9.0: deck A (0) or B (1)
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -33,6 +34,8 @@ public:
     float getArmAngle() const noexcept { return armAngle; }   // radians the arm has swung in from the record's start
     static constexpr float pictureAspect = 1400.0f / 1080.0f;
     static std::vector<juce::Image> picturesForTest();   // the deck, lit, the platter, the arm
+    std::function<void()> onGrab;                         // the hand took this deck's record (the page shows it on the rack)
+    void setSelected (bool);                              // the deck the rack shows: its name lit
 
 private:
     void timerCallback() override;
@@ -40,6 +43,8 @@ private:
     juce::Rectangle<float> pictureArea() const;
     void prepare (float scale);
     ParagonX1AudioProcessor& processor;
+    const int deckIndex;
+    bool selected = false;
     double shownTurns = 0.0;
     float shownLit = 0.0f, armAngle = 0.0f;
     bool grabbed = false;
@@ -54,13 +59,14 @@ class DeckStrip final : public juce::Component,
                         private juce::Timer
 {
 public:
-    explicit DeckStrip (ParagonX1AudioProcessor&);
+    explicit DeckStrip (ParagonX1AudioProcessor&, int deckIndex = 0);
     void paint (juce::Graphics&) override;
     void refresh() { timerCallback(); }
 
 private:
     void timerCallback() override;
     ParagonX1AudioProcessor& processor;
+    const int deckIndex;
     double shownSeconds = 0.0;
 };
 
@@ -77,7 +83,7 @@ public:
 private:
     void timerCallback() override;
     ParagonX1AudioProcessor& processor;
-    float shownGain = 1.0f;
+    std::array<float, 2> shownGain { 1.0f, 1.0f };   // 0.9.0: each deck's, A and B
     bool shownHamster = false;
     juce::SliderParameterAttachment attachment;
 };
@@ -91,14 +97,18 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     std::vector<ParamControl*> getShownControls();   // every control on the rack, all its pages
-    DeckPlatter& getPlatter() noexcept { return platter; }
+    DeckPlatter& getPlatter (int d = 0) noexcept { return d == 0 ? platter : platterB; }
+    DeckStrip& getStrip (int d = 0) noexcept { return d == 0 ? strip : stripB; }
+    // 0.9.0: the deck the rack shows (its controls, its screen) and the keys under the strips play: A (0) or B (1).
+    int getSelectedDeck() const noexcept { return selected; }
+    void selectDeck (int);
     DeckRack& getRack() noexcept { return rack; }
     DeckCrossfader& getCrossfader() noexcept { return crossfader; }
     // HIDE RACK / SHOW RACK (0.4.0, as PR7-I 0.6.3's): the rack hidden, the turntable gets the page's height.
     bool isRackShown() const noexcept { return rackShown; }
     void setRackShown (bool);
     // Reads the deck now (what the page's timers do), for tests and snapshots that run no message loop.
-    void refreshForTest() { timerCallback(); platter.refresh(); strip.refresh(); crossfader.refresh(); }
+    void refreshForTest() { timerCallback(); platter.refresh(); platterB.refresh(); strip.refresh(); stripB.refresh(); crossfader.refresh(); }
 
 private:
     void timerCallback() override;
@@ -107,19 +117,27 @@ private:
 
     ParagonX1AudioProcessor& processor;
     DeckRack rack;
-    DeckPlatter platter;
-    DeckStrip strip;
+    DeckPlatter platter, platterB;
+    DeckStrip strip, stripB;
     DeckCrossfader crossfader;
-    // The rack's controls: DECK's 8 knobs, FADER's 4, CUES' 4 and KEYS, SCRATCH's 3 and SCRATCH KEYS (0.5.0), LEVEL.
-    std::vector<std::unique_ptr<ParamControl>> deckControls, faderControls, cueControls, scratchControls, mixerControls, killControls,
-                                               routingControls;
-    std::unique_ptr<ParamControl> keysMenu, scratchKeysMenu, level;
-    juce::TextButton onKey, loadKey, houseKey;
-    std::unique_ptr<juce::ButtonParameterAttachment> onAttachment;
+    // The rack's controls: DECK's 8 knobs, CUES' 4 and KEYS, SCRATCH's REACH and RATE (0.5.0) and SCRATCH KEYS, MIXER's,
+    // ROUTING's, LEVEL, ON: one set a deck (0.9.0), the selected one's shown. The mixer's, shared: FADER's 4, MOD HAND, HAND.
+    struct DeckSet
+    {
+        std::vector<std::unique_ptr<ParamControl>> deckControls, cueControls, scratchControls, mixerControls, killControls, routingControls;
+        std::unique_ptr<ParamControl> keysMenu, scratchKeysMenu, level;
+        juce::TextButton onKey;
+        std::unique_ptr<juce::ButtonParameterAttachment> onAttachment;
+    };
+    std::array<DeckSet, 2> sets;
+    std::vector<std::unique_ptr<ParamControl>> faderControls, handControls;
+    juce::TextButton loadKey, houseKey;
+    std::array<juce::TextButton, 2> deckKeys;
+    int selected = 0;
     struct KeyButton { deck::Key key; std::unique_ptr<juce::TextButton> button; };
     std::vector<KeyButton> keys;
     juce::TextButton rackButton;
     bool rackShown = true;
-    juce::Label speedLabel, keysLabel;
+    juce::Label speedLabel, speedLabelB, keysLabel;
     std::unique_ptr<juce::FileChooser> chooser;
 };

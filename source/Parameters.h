@@ -557,6 +557,36 @@ namespace ParamIDs
     inline constexpr auto deckSendDelay  = "deckSendDelay";    // 0 to 1: into DELAY's send (while DELAY's on)
     inline constexpr auto deckSendReverb = "deckSendReverb";   // 0 to 1: into REVERB's send (while REVERB's on)
     inline constexpr auto deckInsert     = "deckInsert";       // choice: insertBusNames (None, A-D)
+    // THE SECOND DECK (0.9.0, version hint 49): DECK B, a whole second turntable and mixer channel, its IDs deck A's with
+    // "deckB" for "deck" ("deckBPitch"...). Shared by the two (the mixer's): the crossfader (deckFader, deckCurve,
+    // deckHamster, deckTransform), MOD HAND, and HAND (which deck the pitch and mod wheels move). 0.9.0: deckFader is
+    // the A/B fader (0: A's side, 1: B's; older projects' "1: open" turned round as they load).
+    inline constexpr int numDecks = 2;
+    struct DeckIds
+    {
+        const char *on, *keys, *pitch, *speed, *start, *brake, *spin, *spinTime, *reach, *needle, *level;
+        const char* cues[4];
+        const char *scratchKeys, *scratchReach, *scratchRate;
+        const char* cart;
+        const char* eq[3];
+        const char* kill[3];
+        const char *filter, *filterRes, *wear, *sendDelay, *sendReverb, *insert;
+    };
+    inline constexpr DeckIds deckIds[numDecks] {
+        { deckOn, deckKeys, deckPitch, deckSpeed, deckStart, deckBrake, deckSpin, deckSpinTime, deckReach, deckNeedle, deckLevel,
+          { deckCues[0], deckCues[1], deckCues[2], deckCues[3] }, deckScratchKeys, deckScratchReach, deckScratchRate, deckCart,
+          { deckEq[0], deckEq[1], deckEq[2] }, { deckKill[0], deckKill[1], deckKill[2] }, deckFilter, deckFilterRes, deckWear,
+          deckSendDelay, deckSendReverb, deckInsert },
+        { "deckBOn", "deckBKeys", "deckBPitch", "deckBSpeed", "deckBStart", "deckBBrake", "deckBSpin", "deckBSpinTime", "deckBReach",
+          "deckBNeedle", "deckBLevel", { "deckBCue1", "deckBCue2", "deckBCue3", "deckBCue4" }, "deckBScratchKeys", "deckBScratchReach",
+          "deckBScratchRate", "deckBCart", { "deckBEqLow", "deckBEqMid", "deckBEqHigh" }, { "deckBKillLow", "deckBKillMid", "deckBKillHigh" },
+          "deckBFilter", "deckBFilterRes", "deckBWear", "deckBSendDelay", "deckBSendReverb", "deckBInsert" }
+    };
+    inline constexpr int deckBKeysDefault = 3;          // C3 (note 48): above deck A's two octaves
+    inline constexpr int deckBScratchKeysDefault = 5;   // C4 (note 60)
+    inline constexpr auto deckHand = "deckHand";        // choice: deckHandNames: the deck the pitch wheel (and MOD HAND) moves
+    inline const juce::StringArray deckHandNames { "A", "B" };   // by index: only append
+    inline const juce::StringArray deckNames { "A", "B" };
 
     // THE INSERT BUSES (stage 7d, version hint 19): A to D, each "ins1"... "ins4" plus a setting below: PR7-G's
     // DRIVE and GLITCH (their IDs after the prefix, capitalised), then MOD and LO-FI as above, then the bus's SENDS.

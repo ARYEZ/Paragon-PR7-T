@@ -433,11 +433,12 @@ TEST_CASE ("THE DECK's page: its tab, its keys press the deck's, the platter's h
     CHECK (platter.getLocalBounds().toFloat().contains (centre));
     CHECK (platter.getRecordRadius() > 100.0f);   // the record big enough to grab (at the plugin's 1x), the rack shown
     {
-        // HIDE RACK (0.4.0): the turntable gets the page's height.
+        // HIDE RACK (0.4.0): the turntables get the page's height. (0.9.0: two side by side, so their width is
+        // what holds them: 32% of it each hidden, 30% shown.)
         const auto withRack = platter.getRecordRadius();
         page.setRackShown (false);
         CHECK_FALSE (page.getRack().isVisible());
-        CHECK (platter.getRecordRadius() > withRack * 1.4f);
+        CHECK (platter.getRecordRadius() > withRack * 1.05f);
         page.setRackShown (true);
         CHECK (page.getRack().isVisible());
     }
@@ -673,17 +674,17 @@ TEST_CASE ("THE CROSSFADER's TRANSFORM chops in time: 1/16 at 120 BPM opens 8 ti
 TEST_CASE ("THE CROSSFADER in the plugin: FADER, CURVE and HAMSTER from the parameters; open by default", "[deck][fader][plugin]")
 {
     Plugin p;
-    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load() == 1.0f);
+    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load() == 0.5f);   // 0.9.0: the middle, both decks open
     p.set (ParamIDs::deckOn, 1.0f);
     p.set (ParamIDs::deckStart, 0.05f);
     p.set (ParamIDs::deckNeedle, 0.0f);
     const auto open = p.play (0.6, noteOn (24 + (int) deck::Key::drop4));
     const auto level = rms (open, (size_t) (0.3 * sampleRate), open.size());
     CHECK (level > 0.1);
-    p.set (ParamIDs::deckFader, 0.0f);
+    p.set (ParamIDs::deckFader, 1.0f);     // (0.9.0: all the way to DECK B: deck A cut)
     const auto cut = p.play (0.3);
     CHECK (rms (cut, (size_t) (0.01 * sampleRate), cut.size()) == 0.0);
-    p.set (ParamIDs::deckHamster, 1.0f);   // turned round: the fader at 0 is open
+    p.set (ParamIDs::deckHamster, 1.0f);   // turned round: B's end is A's
     const auto turned = p.play (0.3);
     CHECK_THAT (rms (turned, (size_t) (0.01 * sampleRate), turned.size()), WithinAbs (level, level * 0.02));
 }
@@ -715,11 +716,23 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
                             ParamIDs::deckScratchKeys, ParamIDs::deckScratchReach, ParamIDs::deckScratchRate, ParamIDs::deckModHand,
                             ParamIDs::deckCart, ParamIDs::deckEq[0], ParamIDs::deckEq[1], ParamIDs::deckEq[2], ParamIDs::deckKill[0],
                             ParamIDs::deckKill[1], ParamIDs::deckKill[2], ParamIDs::deckFilter, ParamIDs::deckFilterRes, ParamIDs::deckWear,
-                            ParamIDs::deckSendDelay, ParamIDs::deckSendReverb, ParamIDs::deckInsert })
+                            ParamIDs::deckSendDelay, ParamIDs::deckSendReverb, ParamIDs::deckInsert, ParamIDs::deckHand })
     {
         INFO (id);
         CHECK (ids.contains (id));
     }
+    // 0.9.0: DECK B's every one too.
+    const auto& b = ParamIDs::deckIds[1];
+    for (const auto* id : { b.pitch, b.speed, b.start, b.brake, b.spin, b.spinTime, b.reach, b.needle, b.keys, b.level, b.cues[0], b.cues[1],
+                            b.cues[2], b.cues[3], b.scratchKeys, b.scratchReach, b.scratchRate, b.cart, b.eq[0], b.eq[1], b.eq[2], b.kill[0],
+                            b.kill[1], b.kill[2], b.filter, b.filterRes, b.wear, b.sendDelay, b.sendReverb, b.insert })
+    {
+        INFO (id);
+        CHECK (ids.contains (id));
+    }
+    CHECK (rack.findChildWithID ("deckBOn") != nullptr);
+    CHECK (rack.findChildWithID ("deckShowA") != nullptr);
+    CHECK (rack.findChildWithID ("deckShowB") != nullptr);
     CHECK (rack.findChildWithID ("deckOn") != nullptr);
     CHECK (rack.findChildWithID ("deckLoad") != nullptr);
     CHECK (rack.findChildWithID ("deckHouse") != nullptr);
@@ -749,8 +762,30 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
                                   : pageKey == DeckRack::Page::cues ? ParamIDs::deckCues[0] : pageKey == DeckRack::Page::scratch ? ParamIDs::deckScratchReach
                                   : pageKey == DeckRack::Page::mixer ? ParamIDs::deckKill[1] : ParamIDs::deckSendDelay));
         CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : pageKey == DeckRack::Page::cues ? 6
-                                   : pageKey == DeckRack::Page::scratch ? 5 : pageKey == DeckRack::Page::mixer ? 11 : 4));
+                                   : pageKey == DeckRack::Page::scratch ? 6 : pageKey == DeckRack::Page::mixer ? 11 : 4));
+        CHECK_FALSE (shownIds.contains (ParamIDs::deckIds[1].level));   // deck A's shown, not B's
     }
+
+    // 0.9.0: DECK B shown: its own controls in the same places, the mixer's the same.
+    rack.getPageKey (DeckRack::Page::deck).onClick();
+    auto* showB = dynamic_cast<juce::Button*> (rack.findChildWithID ("deckShowB"));
+    REQUIRE (showB != nullptr);
+    showB->onClick();
+    CHECK (page.getSelectedDeck() == 1);
+    {
+        juce::StringArray shownIds;
+        for (auto* c : controls)
+            if (c->isVisible())
+                shownIds.add (c->getParameterId());
+        INFO (shownIds.joinIntoString (", "));
+        CHECK (shownIds.contains (ParamIDs::deckIds[1].pitch));
+        CHECK (shownIds.contains (ParamIDs::deckIds[1].level));
+        CHECK_FALSE (shownIds.contains (ParamIDs::deckPitch));
+        CHECK (shownIds.size() == 9);
+    }
+    CHECK (rack.findChildWithID ("deckBOn")->isVisible());
+    CHECK_FALSE (rack.findChildWithID ("deckOn")->isVisible());
+    page.selectDeck (0);
 
     // ON is the deck's switch.
     auto* on = dynamic_cast<juce::Button*> (rack.findChildWithID ("deckOn"));
@@ -775,10 +810,10 @@ TEST_CASE ("THE CROSSFADER on the page: dragging it moves FADER, and the deck is
     page.setSize (1476, 672);
     auto& fader = page.getCrossfader();
     CHECK (fader.getWidth() > 300);
-    CHECK (fader.getValue() == 1.0);
+    CHECK (fader.getValue() == 0.5);   // 0.9.0: the middle
     p.play (0.5, noteOn (24 + (int) deck::Key::drop4));
-    fader.setValue (0.0, juce::sendNotificationSync);   // as a drag to the CUT end does
-    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load() == 0.0f);
+    fader.setValue (1.0, juce::sendNotificationSync);   // as a drag to DECK B's end does: deck A cut
+    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load() == 1.0f);
     const auto cut = p.play (0.3);
     CHECK (rms (cut, (size_t) (0.01 * sampleRate), cut.size()) == 0.0);
     page.refreshForTest();
@@ -1321,7 +1356,7 @@ TEST_CASE ("THE DECK's ROUTING: an insert bus's effects on the deck; the sends a
             q.set (ParamIDs::delayMix, 1.0f);
             q.set (ParamIDs::deckSendDelay, send);
         });
-        p.set (ParamIDs::deckFader, 0.0f);
+        p.set (ParamIDs::deckFader, 1.0f);   // (0.9.0: to DECK B's end: deck A cut)
         const auto tail = p.play (1.0);
         return rms (tail, (size_t) (0.02 * sampleRate), tail.size());
     };
@@ -1427,4 +1462,240 @@ TEST_CASE ("THE RECORD changed from the page is an undo step, and marks the pres
     p.processor.redo();
     CHECK (p.processor.getDeckRecord()->name == "undo me");
     folder.deleteRecursively();
+}
+
+//==============================================================================
+// THE SECOND DECK (0.9.0).
+namespace
+{
+    // Both decks on, each its own house record at its 1 kHz tone (DROP 4), the motors quick, the needles quiet.
+    void twoDecks (Plugin& p)
+    {
+        for (int d = 0; d < ParamIDs::numDecks; ++d)
+        {
+            const auto& ids = ParamIDs::deckIds[d];
+            p.set (ids.on, 1.0f);
+            p.set (ids.start, 0.05f);
+            p.set (ids.needle, 0.0f);
+        }
+    }
+    int deckNote (int d, deck::Key key) { return (d == 0 ? 24 : 48) + (int) key; }   // A's keys from C1, B's from C3 (the defaults)
+}
+
+TEST_CASE ("THE SECOND DECK: its own keys (C3) play it, deck A's play A, the rest the synth; both heard at once", "[deck][twodecks][plugin]")
+{
+    Plugin p;
+    CHECK (p.processor.getParameters().getRawParameterValue (ParamIDs::deckIds[1].on)->load() == 0.0f);   // off by default
+    twoDecks (p);
+    // DECK B's PLAY: its motor on, deck A's still off.
+    p.play (0.2, noteOn (deckNote (1, deck::Key::play)));
+    CHECK (p.processor.getDeck (1).isMotorOn());
+    CHECK_FALSE (p.processor.getDeck (0).isMotorOn());
+    // Deck A's PLAY: both turning.
+    p.play (0.2, noteOn (deckNote (0, deck::Key::play)));
+    CHECK (p.processor.getDeck (0).isMotorOn());
+    CHECK (p.processor.getDeck (1).isMotorOn());
+
+    // Each on its own: the tone (DROP 4) on A alone, then on B alone, then both: both together are louder than either.
+    const auto alone = [] (int d)
+    {
+        Plugin q;
+        twoDecks (q);
+        const auto out = q.play (0.6, noteOn (deckNote (d, deck::Key::drop4)));
+        return rms (out, (size_t) (0.3 * sampleRate), out.size());
+    };
+    const auto a = alone (0), b = alone (1);
+    CHECK (a > 0.1);
+    CHECK_THAT (b, WithinAbs (a, a * 0.01));   // the same record, the same level
+    Plugin both;
+    twoDecks (both);
+    juce::MidiBuffer drops;
+    drops.addEvent (juce::MidiMessage::noteOn (1, deckNote (0, deck::Key::drop4), 1.0f), 0);
+    drops.addEvent (juce::MidiMessage::noteOn (1, deckNote (1, deck::Key::drop4), 1.0f), 0);
+    const auto out = both.play (0.6, drops);
+    CHECK_THAT (rms (out, (size_t) (0.3 * sampleRate), out.size()), WithinAbs (2.0 * a, 0.05 * a));   // in phase: twice
+
+    // DECK B off: its keys are the synth's again (its motor never starts).
+    Plugin offB;
+    offB.set (ParamIDs::deckOn, 1.0f);
+    offB.play (0.2, noteOn (deckNote (1, deck::Key::play)));
+    CHECK_FALSE (offB.processor.getDeck (1).isMotorOn());
+}
+
+TEST_CASE ("THE A/B CROSSFADER: A's end cuts B, B's end cuts A, the middle both; a deck's CUT cuts only its side", "[deck][twodecks][fader][plugin]")
+{
+    const auto levels = [] (float fader, std::optional<int> cutDeck = {})
+    {
+        std::array<double, 2> result {};
+        for (int d = 0; d < 2; ++d)
+        {
+            Plugin p;
+            twoDecks (p);
+            p.set (ParamIDs::deckFader, fader);
+            juce::MidiBuffer midi;
+            midi.addEvent (juce::MidiMessage::noteOn (1, deckNote (d, deck::Key::drop4), 1.0f), 0);
+            if (cutDeck.has_value())
+                midi.addEvent (juce::MidiMessage::noteOn (1, deckNote (*cutDeck, deck::Key::cut), 1.0f), 0);
+            const auto out = p.play (0.6, midi);
+            result[(size_t) d] = rms (out, (size_t) (0.3 * sampleRate), out.size());
+        }
+        return result;
+    };
+    const auto middle = levels (0.5f);
+    CHECK (middle[0] > 0.1);
+    CHECK_THAT (middle[1], WithinAbs (middle[0], middle[0] * 0.01));   // both fully open (CURVE: CUT)
+    const auto atA = levels (0.0f);
+    CHECK_THAT (atA[0], WithinAbs (middle[0], middle[0] * 0.01));
+    CHECK (atA[1] == 0.0);
+    const auto atB = levels (1.0f);
+    CHECK (atB[0] == 0.0);
+    CHECK_THAT (atB[1], WithinAbs (middle[0], middle[0] * 0.01));
+    // In the middle, DECK B's CUT held: B silent, A untouched.
+    const auto bCut = levels (0.5f, 1);
+    CHECK_THAT (bCut[0], WithinAbs (middle[0], middle[0] * 0.01));
+    CHECK (bCut[1] == 0.0);
+    // At A's end (B cut), B's CUT is a tap that opens it.
+    const auto bTap = levels (0.0f, 1);
+    CHECK_THAT (bTap[1], WithinAbs (middle[0], middle[0] * 0.01));
+}
+
+TEST_CASE ("HAND: the pitch wheel moves deck A's record, or DECK B's; and A's if B's off", "[deck][twodecks][plugin]")
+{
+    const auto moved = [] (int hand, bool bOn)
+    {
+        Plugin p;
+        twoDecks (p);
+        if (! bOn)
+            p.set (ParamIDs::deckIds[1].on, 0.0f);
+        p.set (ParamIDs::deckHand, (float) hand);
+        p.play (0.1);
+        juce::MidiBuffer wheel;
+        wheel.addEvent (juce::MidiMessage::pitchWheel (1, 16383), 0);   // all the way up: a hand pushes the record on
+        p.play (0.3, wheel);
+        return std::array<double, 2> { p.processor.getDeck (0).getPositionSeconds(), p.processor.getDeck (1).getPositionSeconds() };
+    };
+    const auto onA = moved (0, true);
+    CHECK (onA[0] > 0.2);
+    CHECK (onA[1] == 0.0);
+    const auto onB = moved (1, true);
+    CHECK (onB[0] == 0.0);
+    CHECK (onB[1] > 0.2);
+    const auto bOff = moved (1, false);
+    CHECK (bOff[0] > 0.2);
+}
+
+TEST_CASE ("THE SECOND DECK's record: kept with the project and in presets; an older project's fader turned round", "[deck][twodecks][presets]")
+{
+    const auto folder = juce::File::createTempFile ("pr7t-deckb");
+    folder.createDirectory();
+    const auto file = writeWav (folder, "deck b loop", 24000);
+
+    Plugin p;
+    REQUIRE (p.processor.loadDeckRecord (file, 1));
+    CHECK (p.processor.getDeckRecord (0) == deck::houseRecord());   // deck A's left alone
+    CHECK (p.processor.getDeckRecord (1)->name == "deck b loop");
+    juce::MemoryBlock state;
+    p.processor.getStateInformation (state);
+    Plugin restored;
+    restored.processor.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (restored.processor.getDeckRecordFile (1) == file.getFullPathName());
+    CHECK (restored.processor.getDeckRecord (1)->name == "deck b loop");
+    CHECK (restored.processor.getDeckRecordFile (0).isEmpty());
+
+    // In a preset: round trip, and put back on loading it.
+    Rig rig;
+    rig.deckRecordB = file.getFullPathName();
+    const auto back = Rig::fromXml (*juce::XmlDocument::parse (rig.toXml()->toString()));
+    REQUIRE (back.has_value());
+    CHECK (back->deckRecordB == file.getFullPathName());
+    CHECK_FALSE (back->deckRecord.has_value());
+    Plugin q;
+    q.processor.loadRig (RigLibrary::Entry { *back, {}, false });
+    CHECK (q.processor.getDeckRecord (1)->name == "deck b loop");
+    CHECK (q.processor.getDeckRecord (0) == deck::houseRecord());
+
+    // A project from before 0.9.0: its fader saved as the one deck's (1 open); loaded, deck A sounds as it did (the fader
+    // at A's end). One saved by 0.9.0 (deckBOn in it) keeps its fader as it is.
+    {
+        Plugin now;
+        now.set (ParamIDs::deckFader, 0.8f);
+        juce::MemoryBlock saved;
+        now.processor.getStateInformation (saved);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        REQUIRE (xml != nullptr);
+        Plugin kept;
+        kept.processor.setStateInformation (saved.getData(), (int) saved.getSize());
+        CHECK_THAT (kept.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load(), WithinAbs (0.8, 1.0e-6));
+
+        // The same with DECK B's parameters taken out (as an older version saved it), its fader the old "open".
+        for (auto* child = xml->getFirstChildElement(); child != nullptr;)
+        {
+            auto* next = child->getNextElement();
+            if (child->getStringAttribute ("id").startsWith ("deckB"))
+                xml->removeChildElement (child, true);
+            else if (child->getStringAttribute ("id") == ParamIDs::deckFader)
+                child->setAttribute ("value", 1.0);
+            child = next;
+        }
+        juce::MemoryBlock old;
+        juce::AudioProcessor::copyXmlToBinary (*xml, old);
+        Plugin loaded;
+        loaded.processor.setStateInformation (old.getData(), (int) old.getSize());
+        CHECK (loaded.processor.getParameters().getRawParameterValue (ParamIDs::deckFader)->load() == 0.0f);
+        loaded.set (ParamIDs::deckOn, 1.0f);
+        loaded.set (ParamIDs::deckStart, 0.05f);
+        loaded.set (ParamIDs::deckNeedle, 0.0f);
+        const auto out = loaded.play (0.6, noteOn (deckNote (0, deck::Key::drop4)));
+        CHECK (rms (out, (size_t) (0.3 * sampleRate), out.size()) > 0.1);   // deck A heard, as before
+    }
+    // A preset from before 0.9.0 likewise.
+    {
+        Rig old;
+        old.parameters[ParamIDs::deckFader] = 1.0f;
+        const auto loaded = Rig::fromXml (*juce::XmlDocument::parse (old.toXml()->toString()));
+        REQUIRE (loaded.has_value());
+        CHECK (loaded->parameters.at (ParamIDs::deckFader) == 0.0f);
+        Rig now;
+        now.parameters[ParamIDs::deckFader] = 0.8f;
+        now.parameters[ParamIDs::deckIds[1].on] = 0.0f;
+        CHECK (Rig::fromXml (*juce::XmlDocument::parse (now.toXml()->toString()))->parameters.at (ParamIDs::deckFader) == 0.8f);
+    }
+    folder.deleteRecursively();
+}
+
+TEST_CASE ("THE DECKS' page: two turntables, each grabbed shows its deck on the rack, its keys play it", "[deck][twodecks][ui]")
+{
+    Plugin p;
+    twoDecks (p);
+    DeckPage page (p.processor);
+    page.setSize (1476, 672);
+    auto& a = page.getPlatter (0);
+    auto& b = page.getPlatter (1);
+    CHECK (a.getRecordRadius() > 90.0f);
+    CHECK_THAT (b.getRecordRadius(), WithinAbs (a.getRecordRadius(), 0.01));
+    CHECK (a.getRight() < page.getCrossfader().getX());   // A left of the mixer, B right of it
+    CHECK (b.getX() > page.getCrossfader().getRight());
+    CHECK (page.getSelectedDeck() == 0);
+
+    // Grabbing DECK B's record shows B on the rack and moves B, not A.
+    const auto at = b.getPlatterCentre() + juce::Point<float> (0.0f, -b.getRecordRadius() * 0.7f);
+    const auto e = juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys::leftButtonModifier,
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &b, &b, juce::Time::getCurrentTime(), at,
+                                     juce::Time::getCurrentTime(), 1, false);
+    b.mouseDown (e);
+    CHECK (page.getSelectedDeck() == 1);
+    b.mouseUp (e);
+    page.refreshForTest();
+    CHECK (page.getRack().getScreen().caption.startsWith ("DECK B"));
+
+    // The keys under the strips now play DECK B (its PLAY: B's motor on).
+    juce::TextButton* play = nullptr;
+    for (auto* child : page.getChildren())
+        if (auto* button = dynamic_cast<juce::TextButton*> (child); button != nullptr && button->getButtonText() == "PLAY")
+            play = button;
+    REQUIRE (play != nullptr);
+    play->onClick();
+    p.play (0.2);
+    CHECK (p.processor.getDeck (1).isMotorOn());
+    CHECK_FALSE (p.processor.getDeck (0).isMotorOn());
 }

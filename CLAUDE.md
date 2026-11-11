@@ -22,11 +22,11 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 2. **THE DECK, the engine** (0.2.0, done): below.
 3. **The crossfader** (0.4.0, done): below.
 4. **The scratch library** (0.5.0, done): below.
-5. **The platter view**: a drawn turntable and fader to scratch live with the mouse, glowing as it plays. Started in 0.3.0 (the Tron turntable, below); the fader comes with stage 3.
+5. **The platter view** (0.3.0 and 0.4.0, done): a drawn turntable and fader to scratch live with the mouse, glowing as it plays.
 6. **The sound** (0.6.0, done): below.
 7. **Into the FX** (0.7.0, done): the deck's sends, insert bus and the record in presets; below.
 8. **Real scratches** (0.8.0, done): the library tuned to measurements of DJs; below.
-9. **The second deck** (0.9.0, the owner's ask with 0.8.0's).
+9. **The second deck** (0.9.0, done): below.
 
 ## THE DECK (0.2.0)
 
@@ -113,6 +113,36 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   (songs with timestamps, videos) to match more closely.
 - Tests: `[scratch]` (the push's 53%, CHIRP's openings and its sound in the deck, TRANSFORMER and CRAB open under 40%,
   SCRIBBLE's four strokes).
+
+## THE SECOND DECK (0.9.0)
+
+- **The owner's ask:** "Tune the scratches to real ones and also add the second deck" (the scratches: 0.8.0).
+- **Parameters** (`Parameters.h`, `DeckParameters.cpp`, version hint **49**): `ParamIDs::DeckIds` (every per-deck ID) and
+  `deckIds[numDecks]`: deck A's are the old IDs (their hints unchanged, in their old order), DECK B's "deckB..."
+  (`deckBOn` off; keys C3 = `deckBKeysDefault` 3, scratch keys C4 = `deckBScratchKeysDefault` 5). `addDeck` makes a
+  deck's list; the mixer's shared ones (`deckFader`, `deckCurve`, `deckHamster`, `deckTransform`, `deckModHand`) only
+  on deck A's, plus `deckHand` (choice A/B: the deck the pitch wheel and MOD HAND move; `handDeck()` picks the other if
+  that one's off and it's on).
+- **The A/B fader:** `deckFader` 0 = A's end, 1 = B's, default 0.5. `getDeckSettings (d)` gives each deck its side as
+  its own `Settings::fader` (A `1 - x`, B `x`; the engine's "1 open" unchanged, HAMSTER in the engine).
+  **Migration:** a state or preset without `deckBOn` (from before 0.9.0) has `deckFader` turned round (`1 - v`) in
+  `setStateInformation` and `Rig::fromXml`, so deck A sounds as it did. A MIDI-learned fader now runs the other way
+  (said in the changelog). **CUT / TRANSFORM** (`Deck::process`): `faderFlipped = faderSet >= 0.5 ? 0 : 1` (a snap to
+  the other edge; mirroring the place, as before, does nothing in the middle). A technique's cuts: its own deck only.
+- **The processor:** `decks[2]`, `deckMidi[2]`, `deckSides[2]` (record, `forAudio`, file, problem); every deck call
+  takes `int d = 0` (A when left out, so 0.8.0's callers and tests are unchanged). `processBlock` routes a note to the
+  first on deck whose 12 keys or scratch block hold it (A wins overlaps), the wheels to `handDeck()`. `processChunk`
+  renders each on deck into `deckScratch` and routes it (its own bus and sends). States: `DeckRecord` and
+  `DeckRecordB` children; presets: `Rig::deckRecord` and `deckRecordB` (unset: left alone).
+- **The page:** `DeckPlatter (p, d)` and `DeckStrip (p, d)`, two of each; A left, B right, each at most 30% of the
+  width (32% with the rack hidden: more and the keys between them truncate), between them the strips (capped 130 px),
+  the shown deck's ten keys (two rows of five), the legend, `DeckCrossfader` (A/B ends lit by each deck's gain).
+  `DeckPage::sets[2]` (each deck's rack controls, ON key), shown by `selected` (`selectDeck`: the rack's A / B keys,
+  `deckKeyCell`, or `DeckPlatter::onGrab`); shared `faderControls` and `handControls` (MOD HAND, HAND on SCRATCH's
+  `knobCell` 2-3). `DeckRack::underScreenCell` puts five keys under the screen (A, B, ON, LOAD, HOUSE).
+- Tests: `[twodecks]` (B's keys play B, A's A, both twice as loud, B off gives its keys back; the fader's ends and
+  middle, B's CUT only B, a tap from the cut end; HAND; B's record with the project and in presets, the old project's
+  and old preset's fader turned round, deck A heard; the page's two turntables, grabbing B shows and plays B).
 
 ## The project
 

@@ -2,6 +2,37 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.0
+
+**THE SECOND DECK: two turntables and a real A/B crossfader.**
+
+A DJ's table has two decks with the mixer between them, so PR7-T has too. **DECK B** is a whole second turntable,
+the same as the first: its own record, keys, motor, pitch fader, cues, scratch library, mixer channel (CART, EQ,
+KILLs, FILTER, WEAR) and its own sends and insert bus. Off by default, so your projects sound as they did.
+
+- **The page:** DECK A on the left, DECK B on the right, the mixer between them: both records' strips, the keys
+  (for the deck you're showing), and the crossfader. Grab either record with the mouse to scratch it.
+- **The rack shows one deck at a time:** the new **A** and **B** keys under its screen choose which (grabbing a
+  turntable shows its deck too). LOAD and HOUSE put a record on the deck shown. The FADER page is the mixer's, shared.
+- **The crossfader is now A/B**, as on a DJ mixer: towards A cuts B, towards B cuts A, and in the middle both are
+  heard (with CURVE at CUT, both fully: a beat on one deck under scratches on the other). It starts in the middle.
+  **HAMSTER** turns it round.
+- **CUT and TRANSFORM cut only their own deck's side**, and so do a scratch technique's cuts. CUT now snaps that
+  deck to the other edge (open to cut, cut to open), so it works with the fader anywhere, the middle included.
+- **HAND** (SCRATCH page): which deck the pitch wheel and MOD HAND move. If that deck's off and the other's on,
+  the other.
+- **Keys:** DECK B's 12 keys start at **C3** and its scratch keys at **C4** (deck A's stay at C1 and C2), so both
+  decks play from one keyboard. Change them on each deck's CUES and SCRATCH pages.
+- **Both records are saved** with your projects and presets.
+- **Your old projects and presets:** the fader used to mean "1 = the deck open, 0 = cut". When one from before
+  0.9.0 loads, its fader is turned round to the same place on the new fader, so deck A sounds exactly as it did
+  (tested). **One thing that does change:** if you MIDI-learned a hardware fader to FADER, it now works the other
+  way round (A is at the left, as on a real mixer). Turn on HAMSTER, or flip it on your controller, if you'd rather
+  keep the old direction.
+- Tests check what you'd hear: B's keys play B and A's play A; both together are twice as loud (the same record,
+  in phase); each end of the fader cuts the other deck; B's CUT cuts only B; the pitch wheel moves HAND's deck; B's
+  record comes back with the project and in presets; an older project's deck A sounds as before.
+
 ## 0.8.0
 
 **The scratch library tuned to how DJs really scratch.**

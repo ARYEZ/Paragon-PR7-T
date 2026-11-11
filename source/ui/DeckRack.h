@@ -14,8 +14,9 @@
 // CUES (CUE 1-4, the KEYS menu and the key map) and SCRATCH (0.5.0: the scratch library's REACH, RATE, MOD HAND, its
 // keys' menu and a screen of its techniques to click), and MIXER (0.6.0: the cartridge, the mixer channel's EQ and
 // KILLs, its FILTER, the record's WEAR) and ROUTING (0.7.0: the deck's sends to DELAY and REVERB, its insert bus).
+// 0.9.0: it shows one deck at a time (A or B, its keys under the screen; the FADER page is the mixer's, shared).
 // Left to right: the badge and the page keys; the screen (the
-// record, how it's turning, where the needle is) over the ON, LOAD and HOUSE keys; the page; DECK OUT (the deck's own
+// record, how it's turning, where the needle is) over the A, B, ON, LOAD and HOUSE keys; the page; DECK OUT (the deck's own
 // meter and LEVEL).
 //
 // Only the unit's face and its page keys: the controls on it (DeckPage's) are its children, laid out in the areas it
@@ -68,6 +69,7 @@ public:
     juce::Rectangle<int> menuCell() const;                 // CUES: the KEYS menu (its screen); SCRATCH: SCRATCH KEYS
     juce::Rectangle<int> keyMapArea() const;               // CUES: the key map's screen; SCRATCH: the techniques
     juce::Rectangle<int> keyCell (int index) const;        // 0 ON, 1 LOAD, 2 HOUSE
+    juce::Rectangle<int> deckKeyCell (int deck) const;     // 0.9.0: DECK A, DECK B (which deck the rack shows)
     juce::Rectangle<int> sideKnobCell() const;             // LEVEL
     juce::Rectangle<int> screenArea() const;
     juce::Rectangle<int> meterArea() const;
@@ -83,6 +85,7 @@ private:
     juce::Rectangle<float> pageArea() const;     // under the page's title
     juce::Rectangle<float> sideColumn() const;
     juce::Rectangle<int> pageKeyCell (int index) const;
+    juce::Rectangle<int> underScreenCell (int index) const;
     void paintScreen (juce::Graphics&);
     void paintMeter (juce::Graphics&);
     void paintFaderScreen (juce::Graphics&);

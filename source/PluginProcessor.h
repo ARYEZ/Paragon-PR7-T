@@ -254,7 +254,8 @@ public:
         rack->loFi.seedRandom (seed);
         rack->delay.seedRandom (seed);
         rack->crackle.seedRandom ((std::uint32_t) seed);
-        deck.seedRandom (seed);
+        for (int d = 0; d < ParamIDs::numDecks; ++d)
+            decks[(size_t) d].seedRandom (seed + 100 * d);
         rack->downpour.seedRandom ((std::uint32_t) seed);
         rack->infernal.seedRandom ((std::uint32_t) seed);
         rack->blackHole.seedRandom ((std::uint32_t) seed);
@@ -355,19 +356,21 @@ public:
     // THE DECK (PR7-T 0.2.0): the turntable. Its settings as the parameters have them; where its needle is and how
     // fast it turns (for the page); the record on it (message thread). A record is a sample loaded from a file
     // (WAV, AIFF, FLAC, Ogg; up to 3 minutes), or THE HOUSE RECORD, our own, built in.
-    deck::Settings getDeckSettings() const noexcept;
-    const deck::Deck& getDeck() const noexcept { return deck; }
-    float takeDeckPeak() noexcept { return deck.takePeak(); }   // the rack's meter (0.4.0)
-    std::shared_ptr<const deck::Record> getDeckRecord() const { return deckRecord; }
-    bool loadDeckRecord (const juce::File&);   // false: it couldn't be read (getDeckRecordProblem says why); the record stays
-    void useHouseRecord();
+    // 0.9.0: two decks, A (0) and B (1); each call's `d` says which (A where it's left out, as before 0.9.0).
+    deck::Settings getDeckSettings (int d = 0) const noexcept;
+    int handDeck() const noexcept;   // HAND (0.9.0): the deck the pitch wheel and MOD HAND move
+    const deck::Deck& getDeck (int d = 0) const noexcept { return decks[(size_t) d]; }
+    float takeDeckPeak (int d = 0) noexcept { return decks[(size_t) d].takePeak(); }   // the rack's meter (0.4.0)
+    std::shared_ptr<const deck::Record> getDeckRecord (int d = 0) const { return deckSides[(size_t) d].record; }
+    bool loadDeckRecord (const juce::File&, int d = 0);   // false: it couldn't be read (getDeckRecordProblem says why); the record stays
+    void useHouseRecord (int d = 0);
     // The record changed from the page (LOAD, HOUSE): the preset marked changed, an undo step (0.7.0).
     void deckRecordChangedByUser();
-    juce::String getDeckRecordFile() const { return deckRecordFile; }   // empty: THE HOUSE RECORD
-    juce::String getDeckRecordProblem() const { return deckRecordProblem; }
+    juce::String getDeckRecordFile (int d = 0) const { return deckSides[(size_t) d].file; }   // empty: THE HOUSE RECORD
+    juce::String getDeckRecordProblem (int d = 0) const { return deckSides[(size_t) d].problem; }
     static constexpr double deckRecordMaxSeconds = 180.0;
     // The page's hand on the platter: while holding, how far it has turned the record since it took hold.
-    void setDeckMouseHand (bool holding, float turns) noexcept { deck.setMouseHand (holding, turns); }
+    void setDeckMouseHand (bool holding, float turns, int d = 0) noexcept { decks[(size_t) d].setMouseHand (holding, turns); }
     // DOWNPOUR (0.57.0): its settings as they are now (RAIN, DROPS, DISTANCE, LEVEL as the matrix moves them), and the rain.
     effects::Downpour::Settings getDownpourSettings() const noexcept;
     const effects::Downpour& getDownpour() const noexcept { return rack->downpour; }
@@ -489,7 +492,7 @@ private:
         bool operator== (const Snapshot& other) const
         {
             return rig.parameters == other.rig.parameters && rig.wavetables == other.rig.wavetables && rig.spectra == other.rig.spectra
-                && rig.sfz == other.rig.sfz && rig.deckRecord == other.rig.deckRecord   // (0.7.0: the deck's record, so changing it is an undo step)
+                && rig.sfz == other.rig.sfz && rig.deckRecord == other.rig.deckRecord && rig.deckRecordB == other.rig.deckRecordB   // (0.7.0: the deck's record, so changing it is an undo step)
                 && rig.drawings == other.rig.drawings && rig.modulation == other.rig.modulation && current == other.current;
         }
     };
@@ -594,14 +597,20 @@ private:
     // THE DECK: the turntable, and its share of the MIDI (its 12 keys and the pitch wheel, taken from the synth's
     // while it's on). Its record handed to the audio thread as the MIMIC recording is: a plain pointer, a replaced
     // one kept 2 s so a block still playing it never reads freed memory.
-    deck::Deck deck;
-    juce::MidiBuffer deckMidi, synthMidi;   // (synthMidi: what's left for the synth, swapped back in)
-    juce::AudioBuffer<float> deckScratch;   // 0.7.0: a piece of the deck, before its routing
-    std::shared_ptr<const deck::Record> deckRecord;
-    std::atomic<const deck::Record*> deckRecordForAudio { nullptr };
+    // 0.9.0: two of each, A and B.
+    std::array<deck::Deck, ParamIDs::numDecks> decks;
+    std::array<juce::MidiBuffer, ParamIDs::numDecks> deckMidi;
+    juce::MidiBuffer synthMidi;             // (what's left for the synth, swapped back in)
+    juce::AudioBuffer<float> deckScratch;   // 0.7.0: a piece of a deck, before its routing
+    struct DeckSide
+    {
+        std::shared_ptr<const deck::Record> record;
+        std::atomic<const deck::Record*> forAudio { nullptr };
+        juce::String file, problem;
+    };
+    std::array<DeckSide, ParamIDs::numDecks> deckSides;
     std::vector<std::pair<std::shared_ptr<const deck::Record>, double>> retiredDeckRecords;
-    juce::String deckRecordFile, deckRecordProblem;
-    void setDeckRecord (std::shared_ptr<const deck::Record>);
+    void setDeckRecord (std::shared_ptr<const deck::Record>, int d);
     std::atomic<int> activeVoices { 0 };
 
     // Smoothing stops zipper noise when OUTPUT or the preset's level moves.

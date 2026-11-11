@@ -202,10 +202,18 @@ juce::Rectangle<int> DeckRack::screenArea() const { return displayColumn().withH
 
 juce::Rectangle<int> DeckRack::keyCell (int index) const
 {
-    auto area = displayColumn().withTrimmedTop (screenHeight + 14.0f + 14.0f);   // RECORD printed over the last two
-    const auto width = area.getWidth() / 3.0f;
+    // 0.9.0: five under the screen: DECK A, DECK B (which deck the rack shows), then ON, LOAD, HOUSE (index 0-2 here).
+    return underScreenCell (index + 2);
+}
+
+juce::Rectangle<int> DeckRack::deckKeyCell (int deck) const { return underScreenCell (deck); }
+
+juce::Rectangle<int> DeckRack::underScreenCell (int index) const
+{
+    auto area = displayColumn().withTrimmedTop (screenHeight + 14.0f + 14.0f);   // DECK and RECORD printed over theirs
+    const auto width = area.getWidth() / 5.0f;
     return area.withX (area.getX() + width * (float) index).withWidth (width).withTrimmedBottom (12.0f)
-               .withSizeKeepingCentre (54.0f, 28.0f).toNearestInt();
+               .withSizeKeepingCentre (42.0f, 28.0f).toNearestInt();
 }
 
 juce::Rectangle<int> DeckRack::killCell (int band) const
@@ -287,12 +295,14 @@ void DeckRack::paint (juce::Graphics& g)
 
     paintScreen (g);
 
-    // The keys' names stamped under them; RECORD printed over the last two.
-    for (int i = 0; i < 3; ++i)
+    // The keys' names stamped under them; DECK printed over A and B, RECORD over LOAD and HOUSE.
+    const char* names[] = { "A", "B", "ON", "LOAD", "HOUSE" };
+    for (int i = 0; i < 5; ++i)
     {
-        const auto key = keyCell (i).toFloat();
-        stamped (g, i == 0 ? "ON" : i == 1 ? "LOAD" : "HOUSE", key.translated (0.0f, key.getHeight() + 2.0f).withHeight (12.0f).expanded (20.0f, 0.0f), 8.0f);
+        const auto key = underScreenCell (i).toFloat();
+        stamped (g, names[i], key.translated (0.0f, key.getHeight() + 2.0f).withHeight (12.0f).expanded (8.0f, 0.0f), 8.0f);
     }
+    bracket (g, deckKeyCell (0).toFloat(), deckKeyCell (1).toFloat(), "DECK");
     bracket (g, keyCell (1).toFloat(), keyCell (2).toFloat(), "RECORD");
 
     // The page's name, over it.

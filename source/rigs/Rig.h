@@ -55,6 +55,7 @@ struct Rig
     // THE DECK's record (PR7-T 0.7.0): its file ("": THE HOUSE RECORD). Unset in presets saved before 0.7.0 and the
     // factory's: loading one leaves the record on the deck alone. The sample stays on the user's computer.
     std::optional<juce::String> deckRecord;
+    std::optional<juce::String> deckRecordB;   // 0.9.0: DECK B's (unset in older presets: DECK B's record left alone)
 
     // 0.72.0: a factory preset's version on a downloaded library (the Salamander Grand), played instead of this one
     // when the library is installed; this one is then its fallback, kept exactly as it was. Never saved: only factory
