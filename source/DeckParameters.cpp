@@ -80,6 +80,33 @@ void addDeckParameters (juce::AudioProcessorValueTreeState::ParameterLayout& lay
         layout.add (std::make_unique<juce::AudioParameterChoice> (v46 (ParamIDs::deckScratchRate), "Deck Scratch Rate", deck::scratchRateNames, d.scratchRate));
         layout.add (std::make_unique<juce::AudioParameterBool> (v46 (ParamIDs::deckModHand), "Deck Mod Hand", d.modHand));
     }
+    // THE SOUND (0.6.0): its own hint, 47.
+    {
+        const auto v47 = [] (const char* id) { return juce::ParameterID { id, 47 }; };
+        const auto withText = [] (std::function<juce::String (float, int)> f) { return juce::AudioParameterFloatAttributes().withStringFromValueFunction (std::move (f)); };
+        layout.add (std::make_unique<juce::AudioParameterChoice> (v47 (ParamIDs::deckCart), "Deck Cart", deck::cartNames, d.mixer.cart));
+        const char* bands[] = { "Low", "Mid", "High" };
+        for (int band = 0; band < 3; ++band)
+        {
+            juce::NormalisableRange<float> range { deck::MixerSettings::eqFloorDb, 6.0f, 0.1f };
+            range.setSkewForCentre (-6.0f);   // the knob's middle at -6 dB: most of its travel where the ear works
+            layout.add (std::make_unique<juce::AudioParameterFloat> (v47 (ParamIDs::deckEq[band]), juce::String ("Deck EQ ") + bands[band], range, 0.0f,
+                withText ([] (float db, int) { return db <= deck::MixerSettings::eqFloorDb + 0.5f ? juce::String ("OFF") : (db > 0.05f ? "+" : "") + juce::String (db, 1) + " dB"; })));
+            layout.add (std::make_unique<juce::AudioParameterBool> (v47 (ParamIDs::deckKill[band]), juce::String ("Deck Kill ") + bands[band], false));
+        }
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v47 (ParamIDs::deckFilter), "Deck Filter", juce::NormalisableRange<float> { -1.0f, 1.0f, 0.001f }, 0.0f,
+            withText ([] (float x, int)
+            {
+                if (std::abs (x) <= 0.01f)
+                    return juce::String ("OFF");
+                const auto hz = deck::DeckMixer::filterHz (x);
+                return (x < 0.0f ? "LP " : "HP ") + (hz < 1000.0 ? juce::String (juce::roundToInt (hz)) + " Hz" : juce::String (hz / 1000.0, 1) + " kHz");
+            })));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v47 (ParamIDs::deckFilterRes), "Deck Filter Res", juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f },
+            d.mixer.resonance, withText ([] (float x, int) { return juce::String (juce::roundToInt (x * 100.0f)) + "%"; })));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (v47 (ParamIDs::deckWear), "Deck Wear", juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f },
+            d.wear, withText ([] (float x, int) { return x <= 0.004f ? juce::String ("NEW") : juce::String (juce::roundToInt (x * 100.0f)) + "%"; })));
+    }
     for (int cue = 0; cue < 4; ++cue)
         layout.add (makeFloat (ParamIDs::deckCues[cue], "Deck Cue " + juce::String (cue + 1), { 0.0f, 1.0f, 0.001f },
                                d.cues[(size_t) cue], [] (float x, int) { return juce::String (x * 100.0f, 1) + "%"; }));

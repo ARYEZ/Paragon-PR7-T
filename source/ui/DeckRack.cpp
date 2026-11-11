@@ -65,7 +65,7 @@ namespace
 DeckRack::DeckRack()
 {
     setOpaque (false);
-    for (auto* key : { &deckKey, &faderKey, &cuesKey, &scratchKey })
+    for (auto* key : { &deckKey, &faderKey, &cuesKey, &scratchKey, &mixerKey })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);   // a small key, its stripe lit on its page
         addAndMakeVisible (*key);
@@ -76,6 +76,9 @@ DeckRack::DeckRack()
     scratchKey.setComponentID ("rackScratch");
     scratchKey.setTooltip ("SCRATCH: the scratch library (its keys, REACH, RATE, MOD HAND); click a technique to play it");
     scratchKey.onClick = [this] { setPage (Page::scratch); };
+    mixerKey.setComponentID ("rackMixer");
+    mixerKey.setTooltip ("MIXER: the cartridge, the mixer channel's EQ and KILLs, the FILTER, the record's WEAR");
+    mixerKey.onClick = [this] { setPage (Page::mixer); };
     deckKey.setTooltip ("DECK: the turntable (PITCH, RPM, the motor's START and BRAKE, BACKSPIN, the wheel's REACH, the needle)");
     faderKey.setTooltip ("FADER: the crossfader (FADER, CURVE, TRANSFORM's rate, HAMSTER)");
     cuesKey.setTooltip ("CUES: where DROP 1-4 land, and which keys play the deck");
@@ -92,6 +95,7 @@ void DeckRack::resized()
     faderKey.setBounds (pageKeyCell (1));
     cuesKey.setBounds (pageKeyCell (2));
     scratchKey.setBounds (pageKeyCell (3));
+    mixerKey.setBounds (pageKeyCell (4));
 }
 
 void DeckRack::setScreen (const Screen& s)
@@ -151,6 +155,7 @@ void DeckRack::setPage (Page newPage)
     faderKey.setToggleState (newPage == Page::fader, juce::dontSendNotification);
     cuesKey.setToggleState (newPage == Page::cues, juce::dontSendNotification);
     scratchKey.setToggleState (newPage == Page::scratch, juce::dontSendNotification);
+    mixerKey.setToggleState (newPage == Page::mixer, juce::dontSendNotification);
     if (newPage == page)
         return;
     page = newPage;
@@ -183,8 +188,8 @@ juce::Rectangle<int> DeckRack::pageKeyCell (int index) const
 {
     auto area = badgeColumn();
     area = area.removeFromBottom (60.0f).withTrimmedBottom (14.0f);   // names stamped under them
-    const auto width = area.getWidth() / 4.0f;   // (0.5.0: four pages)
-    return area.withX (area.getX() + width * (float) index).withWidth (width).withSizeKeepingCentre (42.0f, 28.0f).toNearestInt();
+    const auto width = area.getWidth() / 5.0f;   // (0.6.0: five pages)
+    return area.withX (area.getX() + width * (float) index).withWidth (width).withSizeKeepingCentre (34.0f, 28.0f).toNearestInt();
 }
 
 juce::Rectangle<int> DeckRack::screenArea() const { return displayColumn().withHeight (screenHeight).toNearestInt(); }
@@ -195,6 +200,13 @@ juce::Rectangle<int> DeckRack::keyCell (int index) const
     const auto width = area.getWidth() / 3.0f;
     return area.withX (area.getX() + width * (float) index).withWidth (width).withTrimmedBottom (12.0f)
                .withSizeKeepingCentre (54.0f, 28.0f).toNearestInt();
+}
+
+juce::Rectangle<int> DeckRack::killCell (int band) const
+{
+    const auto cell = knobCell (4);
+    const auto height = cell.getHeight() / 3;
+    return cell.withY (cell.getY() + height * band).withHeight (height);
 }
 
 juce::Rectangle<int> DeckRack::knobCell (int index) const
@@ -248,12 +260,13 @@ void DeckRack::paint (juce::Graphics& g)
     // The badge, as on PR7-G's and PR7-I's units: PARAGON over the PR7-T mark, what it is printed in red.
     PedalBody::paintBadge (g, badgeColumn().withHeight (88.0f).translated (2.0f, 2.0f), "TURNTABLE INSTRUMENT");
     {
-        const auto a = pageKeyCell (0).toFloat(), b = pageKeyCell (1).toFloat(), c = pageKeyCell (2).toFloat(), d = pageKeyCell (3).toFloat();
-        bracket (g, a, d, "PAGE");
-        stamped (g, "DECK", a.translated (0.0f, a.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
-        stamped (g, "FADER", b.translated (0.0f, b.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
-        stamped (g, "CUES", c.translated (0.0f, c.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
-        stamped (g, "SCRATCH", d.translated (0.0f, d.getHeight() + 2.0f).withHeight (12.0f).expanded (6.0f, 0.0f), 7.0f);
+        const char* names[] = { "DECK", "FADER", "CUES", "SCRATCH", "MIXER" };
+        bracket (g, pageKeyCell (0).toFloat(), pageKeyCell (4).toFloat(), "PAGE");
+        for (int k = 0; k < 5; ++k)
+        {
+            const auto key = pageKeyCell (k).toFloat();
+            stamped (g, names[k], key.translated (0.0f, key.getHeight() + 2.0f).withHeight (12.0f).expanded (5.0f, 0.0f), 6.5f);
+        }
     }
 
     // The printed lines between the sections.
@@ -279,14 +292,16 @@ void DeckRack::paint (juce::Graphics& g)
     // The page's name, over it.
     auto title = pageArea().withY (content().getY()).withHeight (titleHeight);
     g.setFont (font (15.0f, juce::Font::bold | juce::Font::italic));
-    ParagonLookAndFeel::drawStampedText (g, page == Page::deck ? "DECK" : page == Page::fader ? "FADER" : page == Page::cues ? "CUES" : "SCRATCH",
+    ParagonLookAndFeel::drawStampedText (g, page == Page::deck ? "DECK" : page == Page::fader ? "FADER" : page == Page::cues ? "CUES"
+                                          : page == Page::scratch ? "SCRATCH" : "MIXER",
                                          title.removeFromLeft (page == Page::scratch ? 110.0f : 90.0f), juce::Justification::centredLeft, Finish::ink());
     g.setColour (Finish::printedRed());
     g.setFont (font (8.0f));
     g.drawText (page == Page::deck ? "THE TURNTABLE: ITS SPEED, ITS MOTOR, THE HAND, THE NEEDLE"
               : page == Page::fader ? "THE CROSSFADER: HOW IT CUTS, TRANSFORM'S RATE, HAMSTER"
               : page == Page::cues ? "WHERE THE DROPS LAND, AND THE DECK'S KEYS"
-                                   : "THE SCRATCH LIBRARY: A TECHNIQUE A KEY, IN TIME WITH THE SONG",
+              : page == Page::scratch ? "THE SCRATCH LIBRARY: A TECHNIQUE A KEY, IN TIME WITH THE SONG"
+                                      : "THE CARTRIDGE, THE MIXER CHANNEL'S EQ AND KILLS, ITS FILTER, THE RECORD'S WEAR",
                 title, juce::Justification::centredLeft, false);
 
     if (page == Page::fader)

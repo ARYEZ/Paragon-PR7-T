@@ -545,6 +545,14 @@ namespace ParamIDs
     inline constexpr auto deckModHand      = "deckModHand";        // the mod wheel a hand on the record
     inline const juce::StringArray deckScratchKeyNames { "OFF", "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7" };   // by index: only append
     inline constexpr int deckScratchKeysDefault = 3;   // C2 (note 36): the octave above the deck's own keys
+    // THE SOUND (0.6.0, version hint 47): the cartridge, the mixer channel, the record's wear. Neutral by default (the
+    // deck sounds exactly as before).
+    inline constexpr auto deckCart      = "deckCart";        // choice: deck::cartNames
+    inline constexpr const char* deckEq[] = { "deckEqLow", "deckEqMid", "deckEqHigh" };       // dB: -40 (off) to +6
+    inline constexpr const char* deckKill[] = { "deckKillLow", "deckKillMid", "deckKillHigh" };
+    inline constexpr auto deckFilter    = "deckFilter";      // -1 (low-pass) to +1 (high-pass), 0 off
+    inline constexpr auto deckFilterRes = "deckFilterRes";   // 0 to 1
+    inline constexpr auto deckWear      = "deckWear";        // 0 to 1
 
     // THE INSERT BUSES (stage 7d, version hint 19): A to D, each "ins1"... "ins4" plus a setting below: PR7-G's
     // DRIVE and GLITCH (their IDs after the prefix, capitalised), then MOD and LO-FI as above, then the bus's SENDS.

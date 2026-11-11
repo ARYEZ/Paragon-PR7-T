@@ -712,7 +712,9 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
                             ParamIDs::deckSpinTime, ParamIDs::deckReach, ParamIDs::deckNeedle, ParamIDs::deckFader, ParamIDs::deckCurve,
                             ParamIDs::deckTransform, ParamIDs::deckHamster, ParamIDs::deckKeys, ParamIDs::deckLevel,
                             ParamIDs::deckCues[0], ParamIDs::deckCues[1], ParamIDs::deckCues[2], ParamIDs::deckCues[3],
-                            ParamIDs::deckScratchKeys, ParamIDs::deckScratchReach, ParamIDs::deckScratchRate, ParamIDs::deckModHand })
+                            ParamIDs::deckScratchKeys, ParamIDs::deckScratchReach, ParamIDs::deckScratchRate, ParamIDs::deckModHand,
+                            ParamIDs::deckCart, ParamIDs::deckEq[0], ParamIDs::deckEq[1], ParamIDs::deckEq[2], ParamIDs::deckKill[0],
+                            ParamIDs::deckKill[1], ParamIDs::deckKill[2], ParamIDs::deckFilter, ParamIDs::deckFilterRes, ParamIDs::deckWear })
     {
         INFO (id);
         CHECK (ids.contains (id));
@@ -723,7 +725,7 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
 
     // Each page: its controls shown, inside the unit, none on top of another.
     const auto face = rack.getLocalBounds().reduced (20);
-    for (const auto pageKey : { DeckRack::Page::deck, DeckRack::Page::fader, DeckRack::Page::cues, DeckRack::Page::scratch })
+    for (const auto pageKey : { DeckRack::Page::deck, DeckRack::Page::fader, DeckRack::Page::cues, DeckRack::Page::scratch, DeckRack::Page::mixer })
     {
         rack.getPageKey (pageKey).onClick();
         CHECK (rack.getPage() == pageKey);
@@ -742,8 +744,10 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
         INFO ("page " << (int) pageKey << ": " << shownIds.joinIntoString (", "));
         CHECK (shownIds.contains (ParamIDs::deckLevel));   // LEVEL on every page (DECK OUT)
         CHECK (shownIds.contains (pageKey == DeckRack::Page::deck ? ParamIDs::deckPitch : pageKey == DeckRack::Page::fader ? ParamIDs::deckFader
-                                  : pageKey == DeckRack::Page::cues ? ParamIDs::deckCues[0] : ParamIDs::deckScratchReach));
-        CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : pageKey == DeckRack::Page::cues ? 6 : 5));
+                                  : pageKey == DeckRack::Page::cues ? ParamIDs::deckCues[0] : pageKey == DeckRack::Page::scratch ? ParamIDs::deckScratchReach
+                                  : ParamIDs::deckKill[1]));
+        CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : pageKey == DeckRack::Page::cues ? 6
+                                   : pageKey == DeckRack::Page::scratch ? 5 : 11));
     }
 
     // ON is the deck's switch.
@@ -1012,4 +1016,178 @@ TEST_CASE ("THE DECK lets go of held keys when its keys move (their note-offs wo
     t.settings.firstKey = 36;                        // KEYS moved, HOLD's note-off never coming
     t.play (0.2);
     CHECK_THAT (t.deck.getSpeed(), WithinAbs (1.0, 0.01));   // let go: back with the platter
+}
+
+//==============================================================================
+// THE SOUND (0.6.0, stage 6): the cartridge, the mixer channel, the record's wear.
+namespace
+{
+    // The deck playing a sine of `hz` at normal speed with these settings: its level over the last 0.2 s.
+    double soundLevel (double hz, std::function<void (deck::Settings&)> setUp, double seconds = 0.6)
+    {
+        Turntable t (sineRecord (hz, 4.0));
+        t.settings.startSeconds = 0.05f;
+        setUp (t.settings);
+        t.key (deck::Key::play);
+        t.play (seconds);
+        return t.lastRms (0.2);
+    }
+    double changeDb (double hz, std::function<void (deck::Settings&)> setUp)
+    {
+        return db (soundLevel (hz, setUp) / soundLevel (hz, [] (deck::Settings&) {}));
+    }
+}
+
+TEST_CASE ("THE SOUND, neutral: exactly as before; switched in and out again, exactly as before once it's out", "[deck][sound]")
+{
+    Turntable plain (sineRecord (1000.0)), touched (sineRecord (1000.0));
+    for (auto* t : { &plain, &touched })
+    {
+        t->settings.startSeconds = 0.05f;
+        t->key (deck::Key::play);
+        t->play (0.3);
+    }
+    touched.settings.mixer.eqDb[0] = -6.0f;
+    touched.settings.mixer.filter = -0.4f;
+    touched.settings.mixer.cart = 2;
+    plain.play (0.3);
+    touched.play (0.3);
+    touched.settings.mixer = {};   // back to neutral: 10 ms out
+    plain.play (0.2);
+    touched.play (0.2);
+    const auto from = plain.out.size() - (size_t) (0.1 * sampleRate);
+    CHECK (std::equal (plain.out.begin() + (long) from, plain.out.end(), touched.out.begin() + (long) from));
+}
+
+TEST_CASE ("THE SOUND's isolator: flat at 0 dB, the kills deep, the bands where they're set", "[deck][sound]")
+{
+    // Switched in (a band a hair off 0 dB), it's transparent: its three bands add back up flat.
+    for (const auto hz : { 60.0, 1000.0, 8000.0 })
+    {
+        INFO (hz << " Hz");
+        CHECK_THAT (changeDb (hz, [] (deck::Settings& s) { s.mixer.eqDb[1] = 0.001f; }), WithinAbs (0.0, 0.05));
+    }
+    CHECK (changeDb (60.0, [] (deck::Settings& s) { s.mixer.kill[0] = true; }) < -40.0);
+    CHECK_THAT (changeDb (1000.0, [] (deck::Settings& s) { s.mixer.kill[0] = true; }), WithinAbs (0.0, 0.3));
+    CHECK (changeDb (10000.0, [] (deck::Settings& s) { s.mixer.kill[2] = true; }) < -40.0);
+    CHECK (changeDb (800.0, [] (deck::Settings& s) { s.mixer.kill[1] = true; }) < -30.0);
+    CHECK (changeDb (60.0, [] (deck::Settings& s) { s.mixer.eqDb[0] = deck::MixerSettings::eqFloorDb; }) < -40.0);   // at the floor: off
+    CHECK_THAT (changeDb (60.0, [] (deck::Settings& s) { s.mixer.eqDb[0] = -6.0f; }), WithinAbs (-6.0, 0.3));
+    CHECK_THAT (changeDb (10000.0, [] (deck::Settings& s) { s.mixer.eqDb[2] = 6.0f; }), WithinAbs (6.0, 0.3));
+}
+
+TEST_CASE ("THE SOUND's FILTER: a low-pass left, a high-pass right, RES a peak; across the centre without a click", "[deck][sound]")
+{
+    CHECK (changeDb (1000.0, [] (deck::Settings& s) { s.mixer.filter = -1.0f; }) < -30.0);   // low-pass at 60 Hz
+    CHECK (changeDb (1000.0, [] (deck::Settings& s) { s.mixer.filter = 1.0f; }) < -30.0);    // high-pass at 8 kHz
+    CHECK_THAT (changeDb (1000.0, [] (deck::Settings& s) { s.mixer.filter = 0.005f; }), WithinAbs (0.0, 1.0e-9));   // the centre: off
+    // At its cutoff (the filter at -0.5: about 1.1 kHz) RES makes it sing.
+    const auto atCutoff = deck::DeckMixer::filterHz (-0.5f);
+    const auto low = changeDb (atCutoff, [] (deck::Settings& s) { s.mixer.filter = -0.5f; s.mixer.resonance = 0.0f; });
+    const auto high = changeDb (atCutoff, [] (deck::Settings& s) { s.mixer.filter = -0.5f; s.mixer.resonance = 1.0f; });
+    INFO ("RES 0: " << low << " dB, RES 1: " << high << " dB at " << atCutoff << " Hz");
+    CHECK (high - low > 10.0);
+
+    // Turned straight from a low-pass to a high-pass while a tone plays: faded over, no jump.
+    Turntable t (sineRecord (1000.0));
+    t.settings.startSeconds = 0.05f;
+    t.settings.mixer.filter = -0.3f;
+    t.key (deck::Key::play);
+    t.play (0.5);
+    const auto from = t.out.size();
+    t.settings.mixer.filter = 0.3f;
+    t.play (0.1);
+    float biggest = 0.0f;
+    for (auto i = from; i < t.out.size(); ++i)
+        biggest = juce::jmax (biggest, std::abs (t.out[i] - t.out[i - 1]));
+    CHECK (biggest < 0.08f);
+}
+
+TEST_CASE ("THE SOUND's CART: WARM rounds the highs, SCRATCH lifts the presence and softens the top", "[deck][sound]")
+{
+    CHECK (changeDb (10000.0, [] (deck::Settings& s) { s.mixer.cart = 2; }) < -2.5);
+    CHECK (changeDb (100.0, [] (deck::Settings& s) { s.mixer.cart = 2; }) > 1.0);
+    CHECK_THAT (changeDb (3200.0, [] (deck::Settings& s) { s.mixer.cart = 1; }), WithinAbs (3.0, 0.6));
+    CHECK (changeDb (15000.0, [] (deck::Settings& s) { s.mixer.cart = 1; }) < -2.0);
+}
+
+TEST_CASE ("THE SOUND's WEAR: surface noise while the record moves (louder faster), silent held; a warp's wobble", "[deck][sound]")
+{
+    const auto noise = [] (float wear, bool playing, bool fast)
+    {
+        Turntable t (sineRecord (1000.0, 8.0, 0.0f));   // a silent record: only its surface heard
+        t.settings.startSeconds = 0.05f;
+        t.settings.wear = wear;
+        t.settings.speed45 = fast;
+        if (playing)
+            t.key (deck::Key::play);
+        t.play (1.0);
+        return t.lastRms (0.5);
+    };
+    CHECK (noise (0.0f, true, false) == 0.0);
+    const auto worn = noise (1.0f, true, false);
+    CHECK (worn > 0.003);
+    CHECK (noise (1.0f, false, false) < 1.0e-6);   // still: nothing in the groove passing the needle
+    CHECK_THAT (db (noise (1.0f, true, true) / worn), WithinAbs (db (1.35), 1.0));   // 45 RPM: 1.35 times the speed
+
+    // The warp: a 1 kHz tone's pitch wobbling once a turn, about 0.4% either way (none on a new record).
+    const auto wobble = [] (float wear)
+    {
+        Turntable t (sineRecord (1000.0, 8.0));
+        t.settings.startSeconds = 0.05f;
+        t.settings.wear = wear;
+        t.key (deck::Key::play);
+        t.play (0.3);
+        double lowest = 1.0e9, highest = 0.0;
+        for (int k = 0; k < 36; ++k)   // two turns, a tenth of a second at a time
+        {
+            const auto from = t.play (0.1);
+            const auto hz = frequencyOf (t.out, from, t.out.size());
+            lowest = juce::jmin (lowest, hz);
+            highest = juce::jmax (highest, hz);
+        }
+        return highest - lowest;
+    };
+    CHECK (wobble (0.0f) < 0.5);
+    const auto spread = wobble (1.0f);
+    INFO ("the pitch's spread at full wear: " << spread << " Hz");
+    CHECK (spread > 5.0);
+    CHECK (spread < 9.0);
+}
+
+TEST_CASE ("THE SOUND's KILL switched on mid-note: a quick ramp, not a click", "[deck][sound]")
+{
+    Turntable t (sineRecord (60.0));
+    t.settings.startSeconds = 0.05f;
+    t.key (deck::Key::play);
+    t.play (0.5);
+    const auto from = t.out.size();
+    t.settings.mixer.kill[0] = true;
+    t.play (0.1);
+    float biggest = 0.0f;
+    for (auto i = from; i < t.out.size(); ++i)
+        biggest = juce::jmax (biggest, std::abs (t.out[i] - t.out[i - 1]));
+    CHECK (biggest < 0.02f);   // a 60 Hz sine at 0.5 moves 0.004 a sample; a jump to silence could be 0.5
+    CHECK (t.lastRms (0.05) < 0.01);
+}
+
+TEST_CASE ("THE SOUND in the plugin: the parameters reach the deck", "[deck][sound][plugin]")
+{
+    Plugin p;
+    auto s = p.processor.getDeckSettings();
+    CHECK (s.mixer.cart == 0);
+    CHECK (s.wear == 0.0f);
+    p.set (ParamIDs::deckCart, 2.0f);
+    p.set (ParamIDs::deckEq[1], -12.0f);
+    p.set (ParamIDs::deckKill[2], 1.0f);
+    p.set (ParamIDs::deckFilter, -0.5f);
+    p.set (ParamIDs::deckFilterRes, 0.8f);
+    p.set (ParamIDs::deckWear, 0.6f);
+    s = p.processor.getDeckSettings();
+    CHECK (s.mixer.cart == 2);
+    CHECK_THAT (s.mixer.eqDb[1], WithinAbs (-12.0, 0.1));
+    CHECK (s.mixer.kill[2]);
+    CHECK_THAT (s.mixer.filter, WithinAbs (-0.5, 0.002));
+    CHECK_THAT (s.mixer.resonance, WithinAbs (0.8, 0.01));
+    CHECK_THAT (s.wear, WithinAbs (0.6, 0.01));
 }

@@ -336,6 +336,7 @@ namespace deck
         hostRate = hostSampleRate > 0.0 ? hostSampleRate : 48000.0;
         fadeLength = juce::jmax (1, (int) (0.004 * hostRate));
         gain.reset (hostRate, 0.03);
+        mixer.prepare (hostRate);
         reset();
     }
 
@@ -348,6 +349,9 @@ namespace deck
         shownScratch = -1;
         faderNow = 1.0f;
         shownFader = 1.0f;
+        mixer.reset();
+        hissL = hissR = 0.0;
+        crackleNow = 0.0f;
         hand = Hand::none;
         wheel = 0.0f;
         wheelCentredFor = 0;
@@ -517,6 +521,9 @@ namespace deck
         const auto turnSamples = secondsPerTurn * recordRate;
         const auto centredLetGo = (int) (0.05 * hostRate);
         const auto modLetGo = (int) (0.15 * hostRate);
+        const auto wear = juce::jlimit (0.0f, 1.0f, settings.wear);
+        const auto crackleFall = (float) std::exp (-1.0 / (0.0003 * hostRate));   // a crackle: 0.3 ms
+        mixer.set (settings.mixer);
         const auto scratchSettle = (int) (0.03 * hostRate);
         // The key blocks moved (KEYS or SCRATCH KEYS changed): the held keys' note-offs will go elsewhere, so let go.
         if (settings.firstKey != keysWere || settings.firstScratchKey != scratchKeysWere)
@@ -628,7 +635,10 @@ namespace deck
                 else
                     speed += slipmat * (platter - speed);
                 speed = juce::jlimit (-16.0, 16.0, speed);
-                position = juce::jlimit (0.0, length, position + speed * ratio);
+                // WEAR's warp: the record's speed wobbling once a turn (+-0.4% at full wear), by where the needle is in
+                // the turn (a warp is a place on the record).
+                const auto warp = wear > 0.0f ? 1.0 + 0.004 * wear * std::sin (juce::MathConstants<double>::twoPi * position / turnSamples) : 1.0;
+                position = juce::jlimit (0.0, length, position + speed * ratio * warp);
             }
 
             const auto rate = speed * ratio;
@@ -658,6 +668,27 @@ namespace deck
             outL *= loudness;
             outR *= loudness;
 
+            // WEAR: the record's surface noise, in the groove, so it moves with the record: as loud and as bright as
+            // the record's going fast (a scratch hisses up, a held record is silent), and crackle as often.
+            if (wear > 0.0f)
+            {
+                const auto moving = juce::jmin (2.0, std::abs (speed));
+                if (moving > 1.0e-4)
+                {
+                    const auto bright = juce::jmin (1.0, juce::MathConstants<double>::twoPi * 6000.0 * moving / hostRate);
+                    hissL += bright * ((double) wearRandom.nextFloat() * 2.0 - 1.0 - hissL);
+                    hissR += bright * ((double) wearRandom.nextFloat() * 2.0 - 1.0 - hissR);
+                    const auto hiss = (float) (0.03 * wear * moving);
+                    outL += (float) hissL * hiss;
+                    outR += (float) hissR * hiss;
+                    if (wearRandom.nextFloat() < (float) (wear * moving * 25.0 / hostRate))   // 25 a second at full wear
+                        crackleNow = wear * (0.05f + 0.25f * wearRandom.nextFloat()) * (wearRandom.nextBool() ? 1.0f : -1.0f);
+                }
+                outL += crackleNow;
+                outR += crackleNow * 0.8f;
+                crackleNow *= crackleFall;
+            }
+
             // The needle landing.
             if (thumpLevel > 1.0e-5f || crackleLevel > 1.0e-5f)
             {
@@ -685,7 +716,12 @@ namespace deck
             const auto faderTarget = (hand == Hand::scratch && ! scratchOpen) ? 0.0f : flipped ? faderFlipped : faderSet;
             faderNow = faderNow < faderTarget ? juce::jmin (faderTarget, faderNow + faderStep) : juce::jmax (faderTarget, faderNow - faderStep);
 
-            const auto heardL = outL * level * faderNow, heardR = outR * level * faderNow;
+            // THE SOUND (0.6.0): the cartridge and the mixer channel, after LEVEL, before the crossfader (exactly as
+            // it was while they're neutral).
+            outL *= level;
+            outR *= level;
+            mixer.process (outL, outR);
+            const auto heardL = outL * faderNow, heardR = outR * faderNow;
             left[i] += heardL;
             if (right != nullptr)
                 right[i] += heardR;

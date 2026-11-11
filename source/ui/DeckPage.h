@@ -111,7 +111,7 @@ private:
     DeckStrip strip;
     DeckCrossfader crossfader;
     // The rack's controls: DECK's 8 knobs, FADER's 4, CUES' 4 and KEYS, SCRATCH's 3 and SCRATCH KEYS (0.5.0), LEVEL.
-    std::vector<std::unique_ptr<ParamControl>> deckControls, faderControls, cueControls, scratchControls;
+    std::vector<std::unique_ptr<ParamControl>> deckControls, faderControls, cueControls, scratchControls, mixerControls, killControls;
     std::unique_ptr<ParamControl> keysMenu, scratchKeysMenu, level;
     juce::TextButton onKey, loadKey, houseKey;
     std::unique_ptr<juce::ButtonParameterAttachment> onAttachment;

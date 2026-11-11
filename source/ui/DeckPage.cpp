@@ -475,12 +475,27 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     scratchKeysMenu = std::make_unique<ParamControl> (state, ParamIDs::deckScratchKeys, "SCRATCH KEYS",
                                                       "The octave the scratch library's 12 keys start on (a technique a key), or OFF.");
     scratchKeysMenu->setCompact (true);
+    // MIXER (0.6.0): the cartridge, the mixer channel, the record's wear.
+    make (mixerControls, ParamIDs::deckCart, "CART", "The cartridge's voicing: CLEAN (flat), SCRATCH (a presence lift, a softer top, as "
+                                                     "scratch cartridges are known for), WARM (rounder highs, a little low weight). Ours.", true);
+    make (mixerControls, ParamIDs::deckEq[0], "LOW", "The mixer channel's low band (under 250 Hz): up to +6 dB, down, or OFF at the bottom.");
+    make (mixerControls, ParamIDs::deckEq[1], "MID", "The mixer channel's middle band (250 Hz to 2.5 kHz).");
+    make (mixerControls, ParamIDs::deckEq[2], "HIGH", "The mixer channel's high band (over 2.5 kHz).");
+    make (mixerControls, ParamIDs::deckFilter, "FILTER", "The DJ filter: left a low-pass sweeping down to 60 Hz, right a high-pass up to 8 kHz; "
+                                                         "the centre off.");
+    make (mixerControls, ParamIDs::deckFilterRes, "RES", "The FILTER's resonance: the peak it sings with at its cutoff.");
+    make (mixerControls, ParamIDs::deckWear, "WEAR", "A worn record: surface hiss and crackle that move with it (louder as it goes faster, "
+                                                     "silent held) and a warp's once-a-turn wobble. NEW: none.");
+    const char* killNames[] = { "KILL LOW", "KILL MID", "KILL HIGH" };
+    for (int band = 0; band < 3; ++band)
+        make (killControls, ParamIDs::deckKill[band], killNames[band], "Kills the band at once: the isolator's cut, as on a battle mixer "
+                                                                      "(a quick ramp, never a click).");
     level = std::make_unique<ParamControl> (state, ParamIDs::deckLevel, "LEVEL", "The deck's level, before the rack (EQ, DOMINION...), "
                                                                                  "OUTPUT and the LIMITER, which it goes through as the synth does.");
 
     // On the rack, in its pearl black (lettered in its ink whatever the window's finish).
     Finish::paintAs (Finish::Type::pearlBlack);
-    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls })
+    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls })
         for (auto& c : *list)
         {
             c->setRack (true);
@@ -631,6 +646,9 @@ void DeckPage::showRackPage()
     keysMenu->setVisible (page == DeckRack::Page::cues);
     for (auto& c : scratchControls)
         c->setVisible (page == DeckRack::Page::scratch);
+    for (auto* list : { &mixerControls, &killControls })
+        for (auto& c : *list)
+            c->setVisible (page == DeckRack::Page::mixer);
     scratchKeysMenu->setVisible (page == DeckRack::Page::scratch);
 }
 
@@ -704,7 +722,7 @@ void DeckPage::timerCallback()
 std::vector<ParamControl*> DeckPage::getShownControls()
 {
     std::vector<ParamControl*> result;
-    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls })
+    for (auto* list : { &deckControls, &faderControls, &cueControls, &scratchControls, &mixerControls, &killControls })
         for (auto& c : *list)
             result.push_back (c.get());
     result.push_back (keysMenu.get());
@@ -745,6 +763,11 @@ void DeckPage::resized()
             cueControls[(size_t) i]->setBounds (rack.knobCell (i));
         for (int i = 0; i < (int) scratchControls.size(); ++i)
             scratchControls[(size_t) i]->setBounds (rack.knobCell (i));
+        // MIXER: CART, LOW, MID, HIGH, the KILLs stacked beside them, FILTER, RES, WEAR.
+        for (int i = 0; i < (int) mixerControls.size(); ++i)
+            mixerControls[(size_t) i]->setBounds (rack.knobCell (i < 4 ? i : i + 1));
+        for (int band = 0; band < (int) killControls.size(); ++band)
+            killControls[(size_t) band]->setBounds (rack.killCell (band));
         keysMenu->setBounds (rack.menuCell().reduced (6, 2));
         scratchKeysMenu->setBounds (rack.menuCell().reduced (6, 2));
         level->setBounds (rack.sideKnobCell());

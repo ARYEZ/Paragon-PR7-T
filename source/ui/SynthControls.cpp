@@ -331,7 +331,7 @@ void ParamControl::resized()
     else if (box != nullptr)
         box->setBounds (area.withSizeKeepingCentre (area.getWidth() - 2, juce::jmin (26, area.getHeight())).withY (area.getY() + 4));
     else if (toggle != nullptr)
-        toggle->setBounds (rack ? area.withSizeKeepingCentre (54, 28).withY (area.getY() + 40)   // a rack key, by the knobs' middles
+        toggle->setBounds (rack ? area.withSizeKeepingCentre (54, 28).withY (area.getY() + juce::jmin (40, (area.getHeight() - 28) / 2))   // a rack key: by the knobs' middles, or centred in a short cell (0.6.0's KILLs)
                                 : area.withSizeKeepingCentre (24, 24).withY (area.getY() + 4));
 }
 

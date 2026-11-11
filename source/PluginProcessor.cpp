@@ -1351,6 +1351,15 @@ deck::Settings ParagonX1AudioProcessor::getDeckSettings() const noexcept
     s.scratchReach = param (ParamIDs::deckScratchReach);
     s.scratchRate = juce::jlimit (0, deck::scratchRateNames.size() - 1, juce::roundToInt (param (ParamIDs::deckScratchRate)));
     s.modHand = isOn (ParamIDs::deckModHand);
+    s.mixer.cart = juce::jlimit (0, deck::cartNames.size() - 1, juce::roundToInt (param (ParamIDs::deckCart)));
+    for (size_t band = 0; band < 3; ++band)
+    {
+        s.mixer.eqDb[band] = param (ParamIDs::deckEq[band]);
+        s.mixer.kill[band] = isOn (ParamIDs::deckKill[band]);
+    }
+    s.mixer.filter = param (ParamIDs::deckFilter);
+    s.mixer.resonance = param (ParamIDs::deckFilterRes);
+    s.wear = param (ParamIDs::deckWear);
     return s;
 }
 

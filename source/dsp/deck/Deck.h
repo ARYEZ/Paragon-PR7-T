@@ -2,6 +2,8 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "DeckMixer.h"
+
 #include <array>
 #include <atomic>
 #include <memory>
@@ -114,6 +116,9 @@ namespace deck
         float scratchReach = 0.25f;      // a full-velocity stroke, in turns (softer keys: down to 40% of it)
         int scratchRate = 1;             // scratchRateNames: 1x
         bool modHand = false;            // the mod wheel is a hand on the record (it stays where it's left)
+        // THE SOUND (0.6.0, stage 6): the cartridge and the mixer channel (DeckMixer), and the record's WEAR.
+        MixerSettings mixer;
+        float wear = 0.0f;               // 0 to 1: surface hiss and crackle that move with the record, a warp's wobble
 
         float baseSpeed() const noexcept { return (1.0f + pitch) * (speed45 ? 1.35f : 1.0f); }
     };
@@ -150,7 +155,7 @@ namespace deck
         float takePeak() noexcept { return peak.exchange (0.0f, std::memory_order_relaxed); }
 
         // For tests: the needle's random crackle the same each run.
-        void seedRandom (std::int64_t seed) noexcept { random.setSeed (seed); }
+        void seedRandom (std::int64_t seed) noexcept { random.setSeed (seed); wearRandom.setSeed (seed + 1); }
 
         // Reads `record`'s side `channel` at `position` (in the sample's own samples) as it sounds moving at
         // `rate` samples of it per output sample (its magnitude: the interpolator's cutoff follows it).
@@ -204,6 +209,12 @@ namespace deck
         double thumpPhase = 0.0;
         float thumpLevel = 0.0f, crackleLevel = 0.0f;
         juce::Random random { 7 };
+
+        // THE SOUND (0.6.0): the mixer channel, and WEAR's surface noise (its hiss a side, a crackle dying away).
+        DeckMixer mixer;
+        juce::Random wearRandom { 11 };
+        double hissL = 0.0, hissR = 0.0;
+        float crackleNow = 0.0f;
 
         juce::SmoothedValue<float> gain;
 
