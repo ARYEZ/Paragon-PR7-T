@@ -22,15 +22,13 @@ namespace Finish
         {
             State()
             {
-                // PR7-K (0.50.0) is a pearl black unit, as PR7-G's pearl black (the owner's reference): it has no
-                // finish chooser, so it used to fall back to pearl white, which drew the front panel's knobs black.
-                // A finish someone saves later (Finish::set) still wins.
+                // Read once, the first time anything is drawn. Aurora if chosen (it was Pearl White + Neon);
+                // otherwise (nothing saved yet, Pearl Black, or the retired Pearl White) Obsidian, the default.
                 juce::PropertiesFile file (settingsOptions());
-                const auto saved = file.getIntValue (settingKey, (int) Type::pearlBlack);
-                type = saved == (int) Type::pearlWhite || saved == (int) Type::pearlWhiteNeon ? (Type) saved : Type::pearlBlack;
+                type = file.getIntValue (settingKey, (int) Type::obsidian) == (int) Type::aurora ? Type::aurora : Type::obsidian;
             }
 
-            Type type = Type::pearlBlack;
+            Type type = Type::obsidian;
             std::optional<Type> painting;   // a component's own finish while it and its controls paint (PR7-I's paintAs)
             juce::ChangeBroadcaster broadcaster;
         };
@@ -79,7 +77,23 @@ namespace Finish
 
     juce::Colour ink() { return isBlack() ? juce::Colour (0xfff1eaee) : ParagonColours::ink; }
     juce::Colour inkDim() { return isBlack() ? juce::Colour (0xff9a8f96) : ParagonColours::inkDim; }
-    juce::Colour stampEdge() { return isBlack() ? juce::Colours::black.withAlpha (0.75f) : juce::Colours::white.withAlpha (0.7f); }
+    juce::Colour stampEdge() { return isBlack() ? juce::Colours::black.withAlpha (0.75f) : pearl (juce::Colours::white).withAlpha (0.7f); }
+
+    void dimPearl (juce::Graphics& g, const juce::Path& area)
+    {
+        if (isBlack())
+            return;
+        g.setColour (juce::Colours::black.withAlpha (auroraDimming));
+        g.fillPath (area);
+    }
+
+    juce::Colour pearl (juce::Colour colour)
+    {
+        if (isBlack())
+            return colour;
+        const auto scale = [] (juce::uint8 c) { return (juce::uint8) juce::roundToInt ((float) c * (1.0f - auroraDimming)); };
+        return juce::Colour (scale (colour.getRed()), scale (colour.getGreen()), scale (colour.getBlue()), colour.getAlpha());
+    }
     juce::Colour printedRed() { return isBlack() ? ParagonColours::glow.brighter (0.15f) : ParagonColours::glow.darker (0.15f); }
 
     juce::ColourGradient neonGradient (float left, float right)

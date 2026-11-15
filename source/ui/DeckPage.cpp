@@ -666,7 +666,7 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
                                                     "deck's off and the other's on, the other.) Each turntable can be grabbed with the mouse.", true);
 
     // On the rack, in its pearl black (lettered in its ink whatever the window's finish).
-    Finish::paintAs (Finish::Type::pearlBlack);
+    Finish::paintAs (Finish::Type::obsidian);
     for (auto& set : sets)
     {
         for (auto* list : { &set.deckControls, &set.cueControls, &set.scratchControls, &set.mixerControls, &set.killControls, &set.routingControls })

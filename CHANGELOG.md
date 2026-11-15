@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.10.0
+
+**Two finishes, OBSIDIAN and AURORA**, as on the rest of the PR7 family (PR7-G 0.60.0, PR7-B 0.24.3).
+
+- **OBSIDIAN** is the pearl black unit (Pearl Black renamed), and the default.
+- **AURORA** is the pearl white unit (Pearl White + Neon renamed).
+- On both, the keys and knobs are black in neon pink-to-orange rings, and the wheels' ribs carry the same neon.
+- **Pearl White, with chrome rings, is gone.** If you were on it, PR7-T now opens in Obsidian. If you never picked a
+  finish, or were on Pearl Black, it's Obsidian too, which looks exactly as Pearl Black did. If you were on
+  White + Neon, it's now called Aurora and stays your finish.
+- **Aurora is 10% softer than full white.** Full pearl white was almost dazzling to look at for long, so the whole
+  pearl unit (its rim, face, shine and highlights) is drawn at 90% of its old brightness: pure white becomes 230 out
+  of 255. It still reads clearly as a white unit, not grey. The lettering, neon rings, keys, knobs and screens keep
+  their own colours, so they stand out a touch more. Obsidian is unchanged, pixel for pixel.
+- SETTINGS > FINISH has just the two buttons, OBSIDIAN and AURORA.
+- THE DECK's rack stays pearl black (Obsidian) whatever the finish, as before.
+
+Only the look changed; nothing about the sound, the presets or your projects.
+
 ## 0.9.1
 
 **The mixer between the decks in the turntables' Tron look.**
