@@ -220,6 +220,16 @@ Each change keeps every sum and its order (only independent work overlapped, or 
   times), after its own DNS failed to find the Ubuntu mirrors (0.6.0 never published). The release job runs whatever
   the builds did (`!cancelled()`) and publishes the platforms that passed, so long as Windows did; the notes say when
   Linux is missing. This session can't re-run CI jobs (403): a push is the way to try again.
+- **A known flaky test** (found on 0.11.0's first Windows CI run, 2026-11-20): "RACK: off, it changes nothing, sample
+  for sample, even with its settings made" (`tests/RackTests.cpp`) compares two plugin instances' output and failed on
+  Windows only (Linux CI and every local run passed). Under valgrind (`--tool=none`, slow) on Linux it fails every time,
+  with no memory errors (memcheck clean): **an instance created while no other one exists** starts its notes a little
+  differently (its first 512 samples louder, its phase shifted, the same level later); instances made while another is
+  alive match each other and the normal runs exactly. A warm-up instance made and destroyed first, or a 3 s sleep before
+  playing, doesn't change it. **It isn't THE DECK's or 0.11.0's**: 0.10.0 (another chat's build, which passed this test
+  on Windows CI) shows exactly the same numbers under valgrind. Root cause not found yet (no timer runs in the tests:
+  TestMain has no message loop). Don't weaken or skip the test; if it fails again, a fresh run (a push) is the retry,
+  and finding why a lone instance differs is the fix.
 - **No version tags came over from PR7-K** (they were dropped when the repository was seeded): PR7-T's releases start at `v0.1.0`.
 
 ## How the owner likes to work
