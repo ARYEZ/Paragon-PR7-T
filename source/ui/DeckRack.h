@@ -68,7 +68,7 @@ public:
     juce::Rectangle<int> faderScreenArea() const;          // FADER: the crossfader at work
     juce::Rectangle<int> menuCell() const;                 // CUES: the KEYS menu (its screen); SCRATCH: SCRATCH KEYS
     juce::Rectangle<int> keyMapArea() const;               // CUES: the key map's screen; SCRATCH: the techniques
-    juce::Rectangle<int> keyCell (int index) const;        // 0 ON, 1 LOAD, 2 HOUSE
+    juce::Rectangle<int> keyCell (int index) const;        // 0 ON, 1 LOAD, 2 BUILT IN (HOUSE), 3 SAMPLE (0.11.0)
     juce::Rectangle<int> deckKeyCell (int deck) const;     // 0.9.0: DECK A, DECK B (which deck the rack shows)
     juce::Rectangle<int> sideKnobCell() const;             // LEVEL
     juce::Rectangle<int> screenArea() const;

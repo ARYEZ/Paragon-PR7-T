@@ -65,9 +65,10 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
                 }
     }
 
-    // PARAGON_SNAPSHOT_FINISH=white|black|neon: the unit's finish (0.74.1), not remembered.
-    if (const auto finish = env ("PARAGON_SNAPSHOT_FINISH"); finish.isNotEmpty())
-        Finish::set (finish == "white" ? Finish::Type::pearlWhite : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlBlack, false);
+    // PARAGON_SNAPSHOT_FINISH=aurora (or neon, white): the Aurora finish; otherwise Obsidian, the default
+    // (not remembered).
+    const auto finish = env ("PARAGON_SNAPSHOT_FINISH");
+    Finish::set (finish == "aurora" || finish == "neon" || finish == "white" ? Finish::Type::aurora : Finish::Type::obsidian, false);
 
     MainView::offerLibrary = false;   // (no window asking to download the piano)
     // PARAGON_SNAPSHOT_LIBRARIES: a folder holding the Salamander's, linked in so the piano presets play.

@@ -203,6 +203,7 @@ juce::Rectangle<int> DeckRack::screenArea() const { return displayColumn().withH
 juce::Rectangle<int> DeckRack::keyCell (int index) const
 {
     // 0.9.0: five under the screen: DECK A, DECK B (which deck the rack shows), then ON, LOAD, HOUSE (index 0-2 here).
+    // 0.11.0: six: SAMPLE (3) after BUILT IN (HOUSE's key, now stepping through the built-in records).
     return underScreenCell (index + 2);
 }
 
@@ -211,9 +212,9 @@ juce::Rectangle<int> DeckRack::deckKeyCell (int deck) const { return underScreen
 juce::Rectangle<int> DeckRack::underScreenCell (int index) const
 {
     auto area = displayColumn().withTrimmedTop (screenHeight + 14.0f + 14.0f);   // DECK and RECORD printed over theirs
-    const auto width = area.getWidth() / 5.0f;
+    const auto width = area.getWidth() / 6.0f;
     return area.withX (area.getX() + width * (float) index).withWidth (width).withTrimmedBottom (12.0f)
-               .withSizeKeepingCentre (42.0f, 28.0f).toNearestInt();
+               .withSizeKeepingCentre (36.0f, 28.0f).toNearestInt();
 }
 
 juce::Rectangle<int> DeckRack::killCell (int band) const
@@ -266,7 +267,7 @@ juce::Rectangle<int> DeckRack::sideKnobCell() const
 void DeckRack::paint (juce::Graphics& g)
 {
     // The unit, and everything on it (its knobs and keys too, till paintOverChildren), in pearl black.
-    Finish::paintAs (Finish::Type::pearlBlack);
+    Finish::paintAs (Finish::Type::obsidian);
 
     const auto chassis = getLocalBounds().toFloat().reduced (glowRoom);
     PedalBody::paintUnit (g, chassis, face(), [this] (juce::Graphics& gg) { gg.drawImage (satin, getLocalBounds().toFloat()); }, unitShape);
@@ -296,14 +297,14 @@ void DeckRack::paint (juce::Graphics& g)
     paintScreen (g);
 
     // The keys' names stamped under them; DECK printed over A and B, RECORD over LOAD and HOUSE.
-    const char* names[] = { "A", "B", "ON", "LOAD", "HOUSE" };
-    for (int i = 0; i < 5; ++i)
+    const char* names[] = { "A", "B", "ON", "LOAD", "BUILT IN", "SAMPLE" };
+    for (int i = 0; i < 6; ++i)
     {
         const auto key = underScreenCell (i).toFloat();
         stamped (g, names[i], key.translated (0.0f, key.getHeight() + 2.0f).withHeight (12.0f).expanded (8.0f, 0.0f), 8.0f);
     }
     bracket (g, deckKeyCell (0).toFloat(), deckKeyCell (1).toFloat(), "DECK");
-    bracket (g, keyCell (1).toFloat(), keyCell (2).toFloat(), "RECORD");
+    bracket (g, keyCell (1).toFloat(), keyCell (3).toFloat(), "RECORD");
 
     // The page's name, over it.
     auto title = pageArea().withY (content().getY()).withHeight (titleHeight);

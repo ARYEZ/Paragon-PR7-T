@@ -1277,6 +1277,43 @@ void ParagonX1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         referencePosition = position + count >= reference->getNumSamples() ? -1 : position + count;
     }
 
+    // SAMPLE (0.11.0): the output, as it leaves, into the take (only while one's armed or going: no other work here).
+    if (const auto state = (SampleState) sampleState.load(); state == SampleState::armed || state == SampleState::recording
+                                                               || state == SampleState::stopping)
+    {
+        if (state == SampleState::stopping)
+            sampleState = (int) SampleState::done;
+        else
+        {
+            auto from = 0;
+            if (state == SampleState::armed)
+            {
+                // It starts at the first sound (-60 dB), so the record starts where the sound does.
+                from = numSamples;
+                for (int c = 0; c < buffer.getNumChannels(); ++c)
+                    for (int i = 0; i < from; ++i)
+                        if (std::abs (buffer.getSample (c, i)) > 0.001f)
+                        {
+                            from = i;
+                            break;
+                        }
+                if (from < numSamples)
+                    sampleState = (int) SampleState::recording;
+            }
+            if (from < numSamples)
+            {
+                const auto at = sampleLength.load();
+                const auto count = juce::jmin (numSamples - from, sampleBuffer.getNumSamples() - at);
+                for (int c = 0; c < sampleBuffer.getNumChannels() && count > 0; ++c)
+                    sampleBuffer.copyFrom (c, at, buffer, juce::jmin (c, buffer.getNumChannels() - 1), from, count);
+                sampleLength = at + count;
+                if (at + count >= sampleBuffer.getNumSamples())
+                    sampleState = (int) SampleState::done;   // 30 s: full
+            }
+        }
+    }
+    ++blocksProcessed;
+
     activeVoices = engine.getNumActiveVoices();
     midi.clear();   // an instrument: nothing goes on down the MIDI chain
 }
@@ -1422,6 +1459,126 @@ void ParagonX1AudioProcessor::useHouseRecord (int d)
     side.problem = {};
     if (side.record != deck::houseRecord())
         setDeckRecord (deck::houseRecord(), d);
+}
+
+void ParagonX1AudioProcessor::useBuiltInRecord (int which, int d)
+{
+    if (which != 1)
+    {
+        useHouseRecord (d);
+        return;
+    }
+    auto& side = deckSides[(size_t) d];
+    side.file = nuRecordRef;
+    side.problem = {};
+    if (side.record != deck::nuRecord())
+        setDeckRecord (deck::nuRecord(), d);
+}
+
+int ParagonX1AudioProcessor::getBuiltInRecord (int d) const
+{
+    const auto& file = deckSides[(size_t) d].file;
+    return file.isEmpty() ? 0 : file == nuRecordRef ? 1 : -1;
+}
+
+void ParagonX1AudioProcessor::putRecord (const juce::String& ref, int d)
+{
+    if (ref.isEmpty())
+        useHouseRecord (d);
+    else if (ref == nuRecordRef)
+        useBuiltInRecord (1, d);
+    else if (ref != deckSides[(size_t) d].file || deckSides[(size_t) d].problem.isNotEmpty())
+        loadDeckRecord (juce::File (ref), d);
+}
+
+juce::File ParagonX1AudioProcessor::getSampleFolder() const
+{
+    // Beside the presets' folder (Windows: %APPDATA%\Paragon\Paragon PR7-T\Records).
+    return rigLibrary->getFolder().getSiblingFile ("Records");
+}
+
+void ParagonX1AudioProcessor::armSample (int d)
+{
+    if (getSampleState() != SampleState::idle)
+        return;
+    // Sized here, on the message thread: the audio thread only ever writes into it.
+    sampleRateAtArm = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+    sampleBuffer.setSize (2, (int) (sampleMaxSeconds * sampleRateAtArm));
+    sampleLength = 0;
+    sampleDeck = juce::jlimit (0, ParamIDs::numDecks - 1, d);
+    sampleProblem = {};
+    sampleState = (int) SampleState::armed;
+}
+
+void ParagonX1AudioProcessor::stopSample()
+{
+    auto armed = (int) SampleState::armed;
+    if (sampleState.compare_exchange_strong (armed, (int) SampleState::idle))
+        return;   // nothing played yet: cancelled
+    auto recording = (int) SampleState::recording;
+    if (sampleState.compare_exchange_strong (recording, (int) SampleState::stopping))
+    {
+        blocksAtStop = blocksProcessed.load();
+        stopAskedAt = juce::Time::getMillisecondCounterHiRes();
+    }
+}
+
+bool ParagonX1AudioProcessor::finishSample()
+{
+    // Asked to stop with no block run since (the host isn't playing): the audio thread can't be writing, so it's done.
+    if (getSampleState() == SampleState::stopping && blocksProcessed.load() == blocksAtStop
+        && juce::Time::getMillisecondCounterHiRes() - stopAskedAt > 300.0)
+    {
+        auto stopping = (int) SampleState::stopping;
+        sampleState.compare_exchange_strong (stopping, (int) SampleState::done);
+    }
+    if (getSampleState() != SampleState::done)
+        return false;
+
+    // The take: its silent end trimmed (50 ms left on), its peak brought to the built-in records' (0.7).
+    auto length = sampleLength.load();
+    const auto threshold = 0.001f;
+    auto last = 0;
+    for (int c = 0; c < sampleBuffer.getNumChannels(); ++c)
+        for (int i = length - 1; i > last; --i)
+            if (std::abs (sampleBuffer.getSample (c, i)) > threshold)
+            {
+                last = i;
+                break;
+            }
+    length = juce::jmin (length, last + 1 + (int) (0.05 * sampleRateAtArm));
+    sampleState = (int) SampleState::idle;
+    if (length < (int) (0.02 * sampleRateAtArm))
+    {
+        sampleProblem = "The take was too short";
+        return false;
+    }
+    juce::AudioBuffer<float> take (2, length);
+    for (int c = 0; c < 2; ++c)
+        take.copyFrom (c, 0, sampleBuffer, c, 0, length);
+    if (const auto peak = take.getMagnitude (0, length); peak > 0.0f)
+        take.applyGain (0.7f / peak);
+    sampleBuffer.setSize (0, 0);   // (its memory back)
+
+    // Saved as a WAV, so the project and its presets keep it as they keep any record.
+    const auto folder = getSampleFolder();
+    folder.createDirectory();
+    const auto file = folder.getNonexistentChildFile ("Sample " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S"), ".wav", false);
+    {
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+        auto writer = stream != nullptr ? wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (sampleRateAtArm)
+                                                                            .withNumChannels (2).withBitsPerSample (24))
+                                        : nullptr;
+        if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (take, 0, length))
+        {
+            sampleProblem = "Couldn't save the take in " + folder.getFullPathName();
+            return false;
+        }
+    }
+    loadDeckRecord (file, sampleDeck);
+    deckRecordChangedByUser();
+    return true;
 }
 
 bool ParagonX1AudioProcessor::loadDeckRecord (const juce::File& file, int d)
@@ -1855,6 +2012,7 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
 //==============================================================================
 void ParagonX1AudioProcessor::timerCallback()
 {
+    finishSample();
     finishMidiLearn();
     installSfzLoads();
     updateWavetables();
@@ -2606,12 +2764,7 @@ void ParagonX1AudioProcessor::applyRig (const Rig& rig)
     // 0.9.0: DECK B's likewise (presets from before 0.9.0 leave it alone).
     for (int d = 0; d < ParamIDs::numDecks; ++d)
         if (const auto& record = d == 0 ? rig.deckRecord : rig.deckRecordB; record.has_value())
-        {
-            if (record->isEmpty())
-                useHouseRecord (d);
-            else if (*record != deckSides[(size_t) d].file || deckSides[(size_t) d].problem.isNotEmpty())
-                loadDeckRecord (juce::File (*record), d);
-        }
+            putRecord (*record, d);
 
     applyingRig = false;
     rigModified = false;
@@ -2888,11 +3041,7 @@ void ParagonX1AudioProcessor::setStateInformation (const void* data, int sizeInB
     loadedTables = tables;
     for (int d = 0; d < ParamIDs::numDecks; ++d)
     {
-        const auto& file = deckFiles[(size_t) d];
-        if (file.isEmpty())
-            useHouseRecord (d);
-        else if (file != deckSides[(size_t) d].file || deckSides[(size_t) d].problem.isNotEmpty())
-            loadDeckRecord (juce::File (file), d);
+        putRecord (deckFiles[(size_t) d], d);   // (0.11.0: a built-in by its name too)
     }
     for (int i = 0; i < ParamIDs::numOscillators; ++i)
         if (instrumentRefs[(size_t) i] != sfzRefs[(size_t) i] || sfzStates[(size_t) i] == SfzState::failed)

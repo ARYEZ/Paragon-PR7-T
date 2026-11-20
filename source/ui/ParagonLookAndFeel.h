@@ -122,7 +122,7 @@ public:
     // The mockup's LED bars: when lit, a neon tube (white-hot core inside a
     // red-orange outline, with a soft glow); when off, a dimmer solid red.
     static void drawNeonBar (juce::Graphics&, juce::Rectangle<float> bar, bool lit);
-    // A raised chrome bezel (the neon on pearl black and white + neon) on the metal with a dark well inside it, the way a
+    // A raised bezel (in the neon, pink to orange, on both finishes) on the metal with a dark well inside it, the way a
     // real unit's footswitches and big keys are mounted. Returns the well,
     // for the key to be drawn in.
     static juce::Rectangle<float> drawChromeBezel (juce::Graphics&, juce::Rectangle<float> bezel, float radius);

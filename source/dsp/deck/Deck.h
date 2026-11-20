@@ -54,6 +54,12 @@ namespace deck
     //  - a 1 kHz tone, as on a DJ's practice record (good for transforms, and for the tests to measure pitch by).
     // All synthesized here; no one's recording.
     std::shared_ptr<const Record> houseRecord();
+    // THE NU RECORD (0.11.0): our own nu-metal scratch record, built in beside THE HOUSE RECORD, the sounds nu-metal's
+    // DJs cut up over the band (the owner's reference had a scratched vocal, a distorted guitar stab, noise and a
+    // squeal), synthesized here, no one's recording. Four, two seconds apart at the cues: a shouted "AAH!" driven
+    // through a megaphone's band; a drop-D power chord through a high-gain rig; a feedback squeal rising, then a laser
+    // zap; palm-muted chugs at 120 BPM ending on an open chord.
+    std::shared_ptr<const Record> nuRecord();
     inline constexpr double houseToneStart = 6.0, houseToneSeconds = 1.6, houseToneHz = 1000.0;
 
     // One record's place in seconds, per turn of the platter: the groove's 33 1/3 RPM (60 / 33.333 s).

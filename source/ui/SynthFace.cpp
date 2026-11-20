@@ -62,13 +62,12 @@ void FaceWheel::paint (juce::Graphics& g)
     g.fillRoundedRectangle (well, 5.0f);
 
     // The wheel (0.50.0, the owner's ask): the tread of PR7-G's expression pedal wrapped round a wheel. Black
-    // rubber, ribbed across like the pedal's pads, each rib a lit top edge over a shadow; on the neon finishes
-    // (0.74.1, as PR7-G 0.59.0) each rib's top is the neon, pink to red to orange across. Seen side on, so the ribs bunch up and darken
+    // rubber, ribbed across like the pedal's pads, each rib's top the neon, pink to red to orange across (0.74.1,
+    // as PR7-G 0.59.0; on both finishes since 0.10.0) over a shadow. Seen side on, so the ribs bunch up and darken
     // towards the top and bottom where the wheel curves away, and they roll as it's turned.
     const auto wheel = well.reduced (4.0f, 6.0f);
     juce::Path tread;
     tread.addRoundedRectangle (wheel, 4.0f);
-    const auto neonRibs = Finish::neonRings();
     g.setColour (juce::Colour (0xff1a1618));
     g.fillPath (tread);
     {
@@ -81,18 +80,10 @@ void FaceWheel::paint (juce::Graphics& g)
             const auto t = juce::jlimit (-1.0f, 1.0f, (y - wheel.getCentreY()) / (wheel.getHeight() * 0.5f));
             const auto curved = wheel.getCentreY() + wheel.getHeight() * 0.5f * std::sin (t * 1.2f) / std::sin (1.2f);
             const auto pitch = spacing * std::cos (t * 1.2f);   // narrower where the curve turns away
-            if (neonRibs)
-            {
-                g.setGradientFill (Finish::neonGradient (wheel.getX(), wheel.getRight()));
-                g.fillRect (wheel.getX(), curved, wheel.getWidth(), pitch * 0.3f);
-                g.setColour (juce::Colours::black.withAlpha (0.5f));
-                g.fillRect (wheel.getX(), curved + pitch * 0.3f, wheel.getWidth(), pitch * 0.2f);
-                continue;
-            }
-            g.setColour (juce::Colours::white.withAlpha (0.08f));
-            g.fillRect (wheel.getX(), curved, wheel.getWidth(), pitch * 0.18f);
-            g.setColour (juce::Colours::black.withAlpha (0.45f));
-            g.fillRect (wheel.getX(), curved + pitch * 0.18f, wheel.getWidth(), pitch * 0.3f);
+            g.setGradientFill (Finish::neonGradient (wheel.getX(), wheel.getRight()));
+            g.fillRect (wheel.getX(), curved, wheel.getWidth(), pitch * 0.3f);
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            g.fillRect (wheel.getX(), curved + pitch * 0.3f, wheel.getWidth(), pitch * 0.2f);
         }
 
         // Round its curve: shaded to near black at the top and bottom, a soft sheen just above the middle.

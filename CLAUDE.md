@@ -27,6 +27,7 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 7. **Into the FX** (0.7.0, done): the deck's sends, insert bus and the record in presets; below.
 8. **Real scratches** (0.8.0, done): the library tuned to measurements of DJs; below.
 9. **The second deck** (0.9.0, done): below.
+10. **Distorted records** (0.11.0, done): THE NU RECORD and SAMPLE; below.
 
 ## THE DECK (0.2.0)
 
@@ -152,6 +153,33 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   middle, B's CUT only B, a tap from the cut end; HAND; B's record with the project and in presets, the old project's
   and old preset's fader turned round, deck A heard; the page's two turntables, grabbing B shows and plays B).
 
+## THE NU RECORD and SAMPLE (0.11.0)
+
+- **The owner's ask:** "how can we get some distorted samples for like what dj's used in numetal songs", then "build
+  both" (a built-in record, resampling), reference "folder - left 20 seconds to about 30 seconds" (not found by search:
+  an Italian band Folder and a Michigan band LeFT exist; audio can't be played here anyway). Asked what they hear:
+  "Scratched vocal, Distorted guitar stab, Noise / squeal".
+- **`deck::nuRecord()`** (`Deck.cpp`, made once like `houseRecord`, 8 s at 48 kHz, each part to a 0.7 peak):
+  `addShout` (formants 850 / 1250 / 2800, f0 290 -> 230 Hz, a fry at f0/2, `drive` 5 through a 300 Hz - 3.5 kHz band),
+  `addGuitarStab` (Karplus-Strong `pluck` D2 / A2 / D3 strummed 8 ms apart, choked, `amp` gain 9: a 400 Hz tightening,
+  asymmetric `drive`, 80 Hz high-pass, 4.5 / 5.5 kHz low-passes), `addSqueal` (1.9 -> 2.6 kHz with 6 Hz vibrato,
+  driven, a little hiss; a zap 6 kHz -> 150 Hz), `addChugs` (seven palm-muted sixteenths at 120 BPM, `damp` 0.85, an
+  open chord). Our own designs; the owner can listen (`PARAGON_NU_WAV=<file> ParagonX1Tests "[.nurecordwav]"`).
+- **Built-ins by name:** a deck's file `""` = the house record (as before), `nuRecordRef` "{record:nu}" = the nu record;
+  `putRecord` (state, presets) and `useBuiltInRecord` / `getBuiltInRecord`. BUILT IN (`houseKey`, id `deckHouse`) steps
+  0 -> 1 -> 0 (a file on the deck: 0).
+- **SAMPLE** (`armSample`, `stopSample`, `finishSample`): `SampleState` idle / armed / recording / stopping / done in an
+  atomic; `sampleBuffer` sized in `armSample` (message thread, 30 s); `processBlock`'s end copies the output while armed
+  (from the first sample over 0.001) or recording, full at 30 s; `stopping` -> done on the next block, or by
+  `finishSample` when no block ran 300 ms after the stop (no host playing). `finishSample` (the processor's timer):
+  trims the end (50 ms kept), peak to 0.7, writes a 24-bit WAV to `getSampleFolder()` (the rig folder's sibling
+  "Records"), `loadDeckRecord` on `sampleDeck`, `deckRecordChangedByUser`. The rack: `underScreenCell` sixths (36 x 28
+  keys), A B ON LOAD BUILT-IN SAMPLE; the key blinks armed, lit recording; the screen's state and line2 say so.
+- Tests: `[nurecord]` (the parts at the cues, peaks, quiet between; the shout's band and squashed crest; the stab's
+  D2 and clipped crest; the squeal rising 1.9 -> 2.7 kHz; the zap; seven chugs dying away; the deck, project, preset,
+  BUILT IN key), `[sample]` (armed waits and cancels; from the first sound; stop; on DECK B as a WAV in Records at 0.7,
+  1 kHz; no host playing; 30 s full; the rack's key and screen).
+
 ## The project
 
 - An AGPLv3 **JUCE VST3** instrument, a turntable (THE DECK) with PR7-K's synthesizer, in the PR7 family's look, sharing the family's code.
@@ -160,6 +188,7 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   - Saved by ID and choices by **index**: only ever *append* choices, never reorder.
   - New parameters get a new version hint number.
   - Migrations for changed defaults live in `setStateInformation` and `Rig::fromXml`.
+- **Finishes** (0.10.0, from PR7-G 0.60.0 / PR7-B 0.24.3, the owner's choice for every PR7): OBSIDIAN (pearl black, the default) and AURORA (pearl white), both with black keys and knobs in neon pink-to-orange rings (`Finish::neonGradient`: the small keys' surrounds, `drawChromeBezel`, `drawPedalKnob`'s ring, the wheels' ribs). `Finish::Type { retiredPearlWhite, obsidian, aurora }`, saved by number (0.9.1's pearlWhite 0, pearlBlack 1, pearlWhiteNeon 2): a saved Aurora stays Aurora; an old Pearl White setting, or none, opens as Obsidian. The chrome-ring code paths (and `neonRings()`) are gone. SETTINGS > FINISH: two buttons (`getFinishButton (Finish::Type)`). THE DECK's rack stays Obsidian (`Finish::paintAs (Finish::Type::obsidian)`). **Aurora is 10% less bright** (PR7-B's owner: full white was "almost disorienting"; 10% chosen from mock-ups of 10/15/25%): `Finish::auroraDimming` (0.10); `Finish::dimPearl (g, path)` lays black at that alpha over pearl just drawn (each colour x 0.9, sheen and highlights included), done at the end of `PedalBody::paintUnit` (`dim` defaults on; the synth face's unit, before its badge and lettering) and once over PR7-G's floor unit in `PedalBody::paint` (kept, unused here); `Finish::pearl (colour)` for colours drawn alone; `Finish::stampEdge` follows the dimmer pearl. Obsidian is untouched (tested: "AURORA's pearl is 10% less bright; OBSIDIAN is unchanged"). New pearl surfaces must be dimmed too. Snapshots: Obsidian unless `PARAGON_SNAPSHOT_FINISH=aurora` (also `neon`, `white`).
 - **Shared DSP pieces:** `BypassFade` and `TailWatch` (EffectUtils.h), and `Circuit` (Circuit.h: models analog stages from their schematics, part by part).
 
 ## Speed (PR7-K 0.68.0, the owner's ask: lighter, the sound unchanged)
@@ -191,6 +220,16 @@ Each change keeps every sum and its order (only independent work overlapped, or 
   times), after its own DNS failed to find the Ubuntu mirrors (0.6.0 never published). The release job runs whatever
   the builds did (`!cancelled()`) and publishes the platforms that passed, so long as Windows did; the notes say when
   Linux is missing. This session can't re-run CI jobs (403): a push is the way to try again.
+- **A known flaky test** (found on 0.11.0's first Windows CI run, 2026-11-20): "RACK: off, it changes nothing, sample
+  for sample, even with its settings made" (`tests/RackTests.cpp`) compares two plugin instances' output and failed on
+  Windows only (Linux CI and every local run passed). Under valgrind (`--tool=none`, slow) on Linux it fails every time,
+  with no memory errors (memcheck clean): **an instance created while no other one exists** starts its notes a little
+  differently (its first 512 samples louder, its phase shifted, the same level later); instances made while another is
+  alive match each other and the normal runs exactly. A warm-up instance made and destroyed first, or a 3 s sleep before
+  playing, doesn't change it. **It isn't THE DECK's or 0.11.0's**: 0.10.0 (another chat's build, which passed this test
+  on Windows CI) shows exactly the same numbers under valgrind. Root cause not found yet (no timer runs in the tests:
+  TestMain has no message loop). Don't weaken or skip the test; if it fails again, a fresh run (a push) is the retry,
+  and finding why a lone instance differs is the fix.
 - **No version tags came over from PR7-K** (they were dropped when the repository was seeded): PR7-T's releases start at `v0.1.0`.
 
 ## How the owner likes to work

@@ -58,16 +58,14 @@ SettingsPage::SettingsPage (ParagonX1AudioProcessor& p)
         processor.getRigLibrary().getFolder().startAsProcess();
     };
 
-    pearlWhite.setTooltip ("The original pearl white unit with black keys and knobs in chrome rings");
-    pearlWhiteNeon.setTooltip ("The pearl white unit with black keys and knobs in neon pink-to-orange rings");
-    pearlBlack.setTooltip ("A pearl black unit with black keys and knobs in neon pink-to-orange rings");
-    pearlWhite.onClick = [] { Finish::set (Finish::Type::pearlWhite); };
-    pearlWhiteNeon.onClick = [] { Finish::set (Finish::Type::pearlWhiteNeon); };
-    pearlBlack.onClick = [] { Finish::set (Finish::Type::pearlBlack); };
+    obsidian.setTooltip ("OBSIDIAN: a pearl black unit, with black keys and knobs in neon pink-to-orange rings");
+    aurora.setTooltip ("AURORA: a pearl white unit, with black keys and knobs in neon pink-to-orange rings");
+    obsidian.onClick = [] { Finish::set (Finish::Type::obsidian); };
+    aurora.onClick = [] { Finish::set (Finish::Type::aurora); };
     Finish::changes().addChangeListener (this);
     showFinish();
 
-    for (auto* component : std::initializer_list<juce::Component*> { &tune, &openFolder, &pearlWhite, &pearlWhiteNeon, &pearlBlack })
+    for (auto* component : std::initializer_list<juce::Component*> { &tune, &openFolder, &obsidian, &aurora })
         addAndMakeVisible (component);
     processor.rigBroadcaster.addChangeListener (this);
 
@@ -162,9 +160,8 @@ SettingsPage::~SettingsPage()
 void SettingsPage::showFinish()
 {
     // The chosen finish is lit like the primary buttons.
-    styleButton (pearlWhite, Finish::get() == Finish::Type::pearlWhite);
-    styleButton (pearlWhiteNeon, Finish::get() == Finish::Type::pearlWhiteNeon);
-    styleButton (pearlBlack, Finish::get() == Finish::Type::pearlBlack);
+    styleButton (obsidian, Finish::get() == Finish::Type::obsidian);
+    styleButton (aurora, Finish::get() == Finish::Type::aurora);
     repaint();
 }
 
@@ -198,8 +195,8 @@ void SettingsPage::paint (juce::Graphics& g)
                           inner.removeFromTop (72), juce::Justification::topLeft, 4, 1.0f);
     }
     section (finishArea, "FINISH",
-             "The unit's colour: pearl white with chrome rings, or pearl white or pearl black with neon pink-to-orange rings "
-             "round the black keys and knobs. Saved on this computer, so every PR7-T you open uses it.");
+             "The unit's colour: OBSIDIAN (pearl black) or AURORA (pearl white), both with black keys and knobs in neon pink-to-orange rings. "
+             "Saved on this computer, so every Paragon PR7-T you open uses it.");
     section (rigsArea, "PRESETS", "Your presets are files in this folder, so you can back them up or share them:\n"
                                   + processor.getRigLibrary().getFolder().getFullPathName());
     section (midiArea, "MIDI LINKS", shownLinks.isEmpty()
@@ -252,8 +249,7 @@ void SettingsPage::resized()
     exprVolume.setBounds (exprArea.withTrimmedTop (98).removeFromTop (ParamControl::knobHeight).withWidth (130));
     openFolder.setBounds (rigsArea.reduced (24, 18).withTrimmedTop (100).removeFromTop (32).withWidth (220));
     auto finishButtons = finishArea.reduced (24, 18).withTrimmedTop (100).removeFromTop (32);
-    const auto buttonWidth = juce::jmin (150, (finishButtons.getWidth() - 24) / 3);
-    pearlWhite.setBounds (finishButtons.removeFromLeft (buttonWidth));
-    pearlWhiteNeon.setBounds (finishButtons.withTrimmedLeft (12).removeFromLeft (buttonWidth));
-    pearlBlack.setBounds (finishButtons.withTrimmedLeft (24 + buttonWidth).removeFromLeft (buttonWidth));
+    const auto buttonWidth = juce::jmin (150, (finishButtons.getWidth() - 12) / 2);
+    obsidian.setBounds (finishButtons.removeFromLeft (buttonWidth));
+    aurora.setBounds (finishButtons.withTrimmedLeft (12).removeFromLeft (buttonWidth));
 }

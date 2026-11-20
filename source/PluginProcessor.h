@@ -369,6 +369,26 @@ public:
     juce::String getDeckRecordFile (int d = 0) const { return deckSides[(size_t) d].file; }   // empty: THE HOUSE RECORD
     juce::String getDeckRecordProblem (int d = 0) const { return deckSides[(size_t) d].problem; }
     static constexpr double deckRecordMaxSeconds = 180.0;
+    // 0.11.0: the built-in records (0 THE HOUSE RECORD, 1 THE NU RECORD), named in projects and presets as a file is
+    // ("": the house record, as before; nuRecordRef: the nu record). putRecord puts any of them, or a file, on a deck.
+    static constexpr const char* nuRecordRef = "{record:nu}";
+    void useBuiltInRecord (int which, int d = 0);
+    int getBuiltInRecord (int d = 0) const;   // which is on the deck (-1: a file)
+    void putRecord (const juce::String& ref, int d);
+    // SAMPLE (0.11.0): PR7-T's own output recorded onto a deck as its record (resampling, as DJs pressed their own
+    // sounds to cut up). Armed, it starts at the first sound (above -60 dB), stops when asked or at 30 s; then (the
+    // message thread) it's trimmed, brought to the built-in records' level, saved as a WAV in the Records folder
+    // beside the presets' (so projects and presets keep it as any file) and put on the deck it was armed for.
+    enum class SampleState { idle, armed, recording, stopping, done };
+    static constexpr double sampleMaxSeconds = 30.0;
+    void armSample (int d);
+    void stopSample();   // armed: cancelled; recording: finished
+    SampleState getSampleState() const noexcept { return (SampleState) sampleState.load(); }
+    double getSampleSeconds() const noexcept { return sampleRateAtArm > 0.0 ? sampleLength.load() / sampleRateAtArm : 0.0; }
+    int getSampleDeck() const noexcept { return sampleDeck; }
+    juce::String getSampleProblem() const { return sampleProblem; }
+    juce::File getSampleFolder() const;
+    bool finishSample();   // message thread (the timer does it): a finished take saved and put on its deck; true if one was
     // The page's hand on the platter: while holding, how far it has turned the record since it took hold.
     void setDeckMouseHand (bool holding, float turns, int d = 0) noexcept { decks[(size_t) d].setMouseHand (holding, turns); }
     // DOWNPOUR (0.57.0): its settings as they are now (RAIN, DROPS, DISTANCE, LEVEL as the matrix moves them), and the rain.
@@ -611,6 +631,16 @@ private:
     std::array<DeckSide, ParamIDs::numDecks> deckSides;
     std::vector<std::pair<std::shared_ptr<const deck::Record>, double>> retiredDeckRecords;
     void setDeckRecord (std::shared_ptr<const deck::Record>, int d);
+    // SAMPLE's take: the buffer sized on the message thread when it's armed (the audio thread only writes into it while
+    // armed, recording or stopping), how much is in it, whose deck, when it was asked to stop (and how many blocks had
+    // run then: if none run after, no host is playing and the take is finished here).
+    juce::AudioBuffer<float> sampleBuffer;
+    std::atomic<int> sampleState { 0 }, sampleLength { 0 };
+    std::atomic<std::uint64_t> blocksProcessed { 0 };
+    std::uint64_t blocksAtStop = 0;
+    double stopAskedAt = 0.0, sampleRateAtArm = 0.0;
+    int sampleDeck = 0;
+    juce::String sampleProblem;
     std::atomic<int> activeVoices { 0 };
 
     // Smoothing stops zipper noise when OUTPUT or the preset's level moves.

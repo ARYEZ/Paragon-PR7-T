@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "PluginProcessor.h"
+#include "ui/Finish.h"
 #include "ui/Icons.h"
 #include "ui/SynthControls.h"
 
@@ -56,14 +57,14 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment tuneAttachment;
     juce::TextButton openFolder { "OPEN PRESETS FOLDER" };
     ParamControl exprVolume;   // 0.52.0: EXPR WHEEL CONTROLS VOLUME
-    // 0.74.1, FINISH (as PR7-G's): the unit's colour, the chosen one lit.
-    juce::TextButton pearlWhite { "PEARL WHITE" }, pearlWhiteNeon { "WHITE + NEON" }, pearlBlack { "PEARL BLACK" };
+    // FINISH (as PR7-G's): the unit's colour, the chosen one lit (0.10.0: OBSIDIAN and AURORA).
+    juce::TextButton obsidian { "OBSIDIAN" }, aurora { "AURORA" };
     void showFinish();
     juce::Rectangle<int> tuneArea, rigsArea, aboutArea, exprArea, finishArea;
 
 public:
     ParamControl& getExprVolumeSwitch() noexcept { return exprVolume; }   // for tests
-    juce::TextButton& getFinishButton (int type) noexcept { return type == 0 ? pearlWhite : type == 1 ? pearlBlack : pearlWhiteNeon; }   // by Finish::Type, for tests
+    juce::TextButton& getFinishButton (Finish::Type type) noexcept { return type == Finish::Type::aurora ? aurora : obsidian; }   // for tests
 private:
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override { showFinish(); }

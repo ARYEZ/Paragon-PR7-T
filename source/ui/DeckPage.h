@@ -133,7 +133,7 @@ private:
     };
     std::array<DeckSet, 2> sets;
     std::vector<std::unique_ptr<ParamControl>> faderControls, handControls;
-    juce::TextButton loadKey, houseKey;
+    juce::TextButton loadKey, houseKey, sampleKey;   // (0.11.0: houseKey steps through the built-in records; SAMPLE)
     std::array<juce::TextButton, 2> deckKeys;
     int selected = 0;
     struct KeyButton { deck::Key key; std::unique_ptr<juce::TextButton> button; };
