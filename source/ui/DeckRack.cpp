@@ -267,7 +267,7 @@ juce::Rectangle<int> DeckRack::sideKnobCell() const
 void DeckRack::paint (juce::Graphics& g)
 {
     // The unit, and everything on it (its knobs and keys too, till paintOverChildren), in pearl black.
-    Finish::paintAs (Finish::Type::pearlBlack);
+    Finish::paintAs (Finish::Type::obsidian);
 
     const auto chassis = getLocalBounds().toFloat().reduced (glowRoom);
     PedalBody::paintUnit (g, chassis, face(), [this] (juce::Graphics& gg) { gg.drawImage (satin, getLocalBounds().toFloat()); }, unitShape);

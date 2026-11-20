@@ -8,6 +8,7 @@
 #include "PluginProcessor.h"
 #include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/PedalBody.h"
 
 using Catch::Matchers::WithinAbs;
 
@@ -642,34 +643,102 @@ TEST_CASE ("SETTINGS' EXPR WHEEL CONTROLS VOLUME off: the wheel at the bottom do
     CHECK (parameter->getValue() < 0.5f);
 }
 
-TEST_CASE ("SETTINGS' FINISH: three finishes, the chosen one lit; the neon rings on pearl black and pearl white + neon only", "[ui]")
+TEST_CASE ("SETTINGS' FINISH: OBSIDIAN and AURORA, the chosen one lit; Pearl White is retired", "[ui]")
 {
-    // 0.74.1 (as PR7-G 0.59.0): the keys and knobs are black on every finish; the neon finishes put the
-    // pink-to-orange in the rings round them (and the wheels' ribs). Pearl white keeps its chrome.
+    // 0.10.0 (as PR7-G 0.60.0 and PR7-B 0.24.0): the keys and knobs are black in neon rings on both finishes.
+    // OBSIDIAN is the pearl black unit (Pearl Black renamed), AURORA the pearl white (Pearl White + Neon renamed).
     const auto before = Finish::get();
     Window w;
     w.view->showPage (MainView::Page::settings);
     auto& page = w.view->getSettingsPage();
     const auto lit = [&] (Finish::Type type)
     {
-        return page.getFinishButton ((int) type).findColour (juce::TextButton::textColourOffId) == ParagonColours::accent;
+        return page.getFinishButton (type).findColour (juce::TextButton::textColourOffId) == ParagonColours::accent;
     };
-    for (const auto type : { Finish::Type::pearlWhite, Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon })
+    for (const auto type : { Finish::Type::obsidian, Finish::Type::aurora })
     {
-        auto& button = page.getFinishButton ((int) type);
+        auto& button = page.getFinishButton (type);
         CHECK (button.isVisible());
         CHECK (! button.getBounds().isEmpty());
         CHECK (page.getLocalBounds().contains (button.getBounds()));
         Finish::set (type, false);   // (what the button does, but not saved: a test mustn't change the computer's setting)
         CHECK (Finish::get() == type);
-        CHECK (Finish::neonRings() == (type != Finish::Type::pearlWhite));
-        CHECK (Finish::isBlack() == (type == Finish::Type::pearlBlack));
-        for (const auto other : { Finish::Type::pearlWhite, Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon })
+        CHECK (Finish::isBlack() == (type == Finish::Type::obsidian));
+        for (const auto other : { Finish::Type::obsidian, Finish::Type::aurora })
             CHECK (lit (other) == (other == type));
     }
-    // The three buttons don't overlap.
-    CHECK (! page.getFinishButton (0).getBounds().intersects (page.getFinishButton (1).getBounds()));
-    CHECK (! page.getFinishButton (0).getBounds().intersects (page.getFinishButton (2).getBounds()));
-    CHECK (! page.getFinishButton (1).getBounds().intersects (page.getFinishButton (2).getBounds()));
+    CHECK (! page.getFinishButton (Finish::Type::obsidian).getBounds().intersects (page.getFinishButton (Finish::Type::aurora).getBounds()));
+
+    // SETTINGS offers just the two (Pearl White is retired), in this order.
+    std::vector<juce::TextButton*> buttons;
+    findAll (page, buttons);
+    juce::StringArray finishes;
+    for (auto* button : buttons)
+        if (button->getButtonText().containsIgnoreCase ("PEARL") || button->getButtonText().containsIgnoreCase ("NEON")
+            || button->getButtonText() == "OBSIDIAN" || button->getButtonText() == "AURORA")
+            finishes.add (button->getButtonText());
+    CHECK (finishes.joinIntoString (",") == "OBSIDIAN,AURORA");
+
+    // The saved numbers keep their meaning: Pearl Black (1) is Obsidian, Pearl White + Neon (2) is Aurora.
+    CHECK ((int) Finish::Type::retiredPearlWhite == 0);
+    CHECK ((int) Finish::Type::obsidian == 1);
+    CHECK ((int) Finish::Type::aurora == 2);
+
+    // The unit's printing follows the finish: its ink, dark on Aurora, light on Obsidian.
+    Finish::set (Finish::Type::aurora, false);
+    CHECK (Finish::ink() == ParagonColours::ink);
+    Finish::set (Finish::Type::obsidian, false);
+    CHECK (Finish::ink() != ParagonColours::ink);
+    Finish::set (before, false);
+}
+
+TEST_CASE ("AURORA's pearl is 10% less bright; OBSIDIAN is unchanged", "[ui]")
+{
+    // The unit's chassis and face drawn with and without the dimming: on Aurora every pixel of the pearl
+    // comes out at 90% (to within rounding), so pure white is about 230; on Obsidian the two are identical.
+    const auto before = Finish::get();
+    const auto draw = [] (bool dim)
+    {
+        juce::Image image (juce::Image::ARGB, 400, 300, true, juce::SoftwareImageType());
+        juce::Graphics g (image);
+        g.fillAll (juce::Colours::black);
+        const auto grain = Finish::makeSatinGrain (400, 300, 99);
+        PedalBody::paintUnit (g, { 40.0f, 40.0f, 320.0f, 220.0f }, { 70.0f, 70.0f, 260.0f, 150.0f },
+                              [&grain] (juce::Graphics& gg) { gg.drawImageAt (grain, 0, 0); }, {}, dim);
+        return image;
+    };
+    const auto brightness = [] (juce::Colour c) { return juce::jmax (c.getRed(), c.getGreen(), c.getBlue()); };
+
+    Finish::set (Finish::Type::aurora, false);
+    const auto bright = draw (false), dimmed = draw (true);
+    int worst = 0, brightest = 0;
+    juce::Path inside;   // the chassis, 2 px in from its edge (outside it is the glow, which isn't pearl)
+    inside.addRoundedRectangle (juce::Rectangle<float> (40.0f, 40.0f, 320.0f, 220.0f).reduced (2.0f), PedalBody::Shape{}.chassisRadius - 2.0f);
+    for (int y = 40; y < 260; ++y)
+        for (int x = 40; x < 360; ++x)
+        {
+            if (! inside.contains ((float) x + 0.5f, (float) y + 0.5f))
+                continue;
+            const auto b = bright.getPixelAt (x, y), a = dimmed.getPixelAt (x, y);
+            for (const auto [was, now] : { std::pair { b.getRed(), a.getRed() }, { b.getGreen(), a.getGreen() }, { b.getBlue(), a.getBlue() } })
+                worst = juce::jmax (worst, std::abs ((int) now - juce::roundToInt ((1.0f - Finish::auroraDimming) * (float) was)));
+            brightest = juce::jmax (brightest, (int) brightness (a));
+        }
+    CHECK (worst <= 1);
+    CHECK (Finish::auroraDimming == 0.10f);
+    CHECK (brightest <= 231);
+    CHECK (brightest >= 215);   // still a white unit, not grey: the brightest pearl near 230
+    CHECK (Finish::pearl (juce::Colours::white) == juce::Colour (230, 230, 230));
+    CHECK (Finish::stampEdge() == juce::Colour (230, 230, 230).withAlpha (0.7f));   // the stamped edge follows the dimmer pearl
+
+    Finish::set (Finish::Type::obsidian, false);
+    const auto blackPlain = draw (false), blackDimmed = draw (true);
+    int blackDifference = 0;
+    for (int y = 0; y < 300; ++y)
+        for (int x = 0; x < 400; ++x)
+            if (blackPlain.getPixelAt (x, y) != blackDimmed.getPixelAt (x, y))
+                ++blackDifference;
+    CHECK (blackDifference == 0);
+    CHECK (Finish::pearl (juce::Colours::white) == juce::Colours::white);
     Finish::set (before, false);
 }
