@@ -27,6 +27,7 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 7. **Into the FX** (0.7.0, done): the deck's sends, insert bus and the record in presets; below.
 8. **Real scratches** (0.8.0, done): the library tuned to measurements of DJs; below.
 9. **The second deck** (0.9.0, done): below.
+10. **Distorted records** (0.11.0, done): THE NU RECORD and SAMPLE; below.
 
 ## THE DECK (0.2.0)
 
@@ -151,6 +152,33 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 - Tests: `[twodecks]` (B's keys play B, A's A, both twice as loud, B off gives its keys back; the fader's ends and
   middle, B's CUT only B, a tap from the cut end; HAND; B's record with the project and in presets, the old project's
   and old preset's fader turned round, deck A heard; the page's two turntables, grabbing B shows and plays B).
+
+## THE NU RECORD and SAMPLE (0.11.0)
+
+- **The owner's ask:** "how can we get some distorted samples for like what dj's used in numetal songs", then "build
+  both" (a built-in record, resampling), reference "folder - left 20 seconds to about 30 seconds" (not found by search:
+  an Italian band Folder and a Michigan band LeFT exist; audio can't be played here anyway). Asked what they hear:
+  "Scratched vocal, Distorted guitar stab, Noise / squeal".
+- **`deck::nuRecord()`** (`Deck.cpp`, made once like `houseRecord`, 8 s at 48 kHz, each part to a 0.7 peak):
+  `addShout` (formants 850 / 1250 / 2800, f0 290 -> 230 Hz, a fry at f0/2, `drive` 5 through a 300 Hz - 3.5 kHz band),
+  `addGuitarStab` (Karplus-Strong `pluck` D2 / A2 / D3 strummed 8 ms apart, choked, `amp` gain 9: a 400 Hz tightening,
+  asymmetric `drive`, 80 Hz high-pass, 4.5 / 5.5 kHz low-passes), `addSqueal` (1.9 -> 2.6 kHz with 6 Hz vibrato,
+  driven, a little hiss; a zap 6 kHz -> 150 Hz), `addChugs` (seven palm-muted sixteenths at 120 BPM, `damp` 0.85, an
+  open chord). Our own designs; the owner can listen (`PARAGON_NU_WAV=<file> ParagonX1Tests "[.nurecordwav]"`).
+- **Built-ins by name:** a deck's file `""` = the house record (as before), `nuRecordRef` "{record:nu}" = the nu record;
+  `putRecord` (state, presets) and `useBuiltInRecord` / `getBuiltInRecord`. BUILT IN (`houseKey`, id `deckHouse`) steps
+  0 -> 1 -> 0 (a file on the deck: 0).
+- **SAMPLE** (`armSample`, `stopSample`, `finishSample`): `SampleState` idle / armed / recording / stopping / done in an
+  atomic; `sampleBuffer` sized in `armSample` (message thread, 30 s); `processBlock`'s end copies the output while armed
+  (from the first sample over 0.001) or recording, full at 30 s; `stopping` -> done on the next block, or by
+  `finishSample` when no block ran 300 ms after the stop (no host playing). `finishSample` (the processor's timer):
+  trims the end (50 ms kept), peak to 0.7, writes a 24-bit WAV to `getSampleFolder()` (the rig folder's sibling
+  "Records"), `loadDeckRecord` on `sampleDeck`, `deckRecordChangedByUser`. The rack: `underScreenCell` sixths (36 x 28
+  keys), A B ON LOAD BUILT-IN SAMPLE; the key blinks armed, lit recording; the screen's state and line2 say so.
+- Tests: `[nurecord]` (the parts at the cues, peaks, quiet between; the shout's band and squashed crest; the stab's
+  D2 and clipped crest; the squeal rising 1.9 -> 2.7 kHz; the zap; seven chugs dying away; the deck, project, preset,
+  BUILT IN key), `[sample]` (armed waits and cancels; from the first sound; stop; on DECK B as a WAV in Records at 0.7,
+  1 kHz; no host playing; 30 s full; the rack's key and screen).
 
 ## The project
 

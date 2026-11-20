@@ -29,6 +29,7 @@ PR7-T is built in stages, each one released:
 | 7 | **Into the FX**: the deck's sends to DELAY and REVERB, an insert bus; the record saved in presets | **Works (0.7.0)** |
 | 8 | **Real scratches**: the scratch library tuned to measurements of DJs | **Works (0.8.0)** |
 | 9 | **The second deck**: DECK B, and an A/B crossfader between the two | **Works (0.9.0)** |
+| 10 | **Distorted records**: THE NU RECORD (built in) and SAMPLE (record PR7-T's own output onto a deck) | **Works (0.11.0)** |
 
 ## Using it
 
@@ -65,6 +66,10 @@ PR7-T is built in stages, each one released:
     of the platter; a turn is 1.8 seconds of the record). Let the wheel spring back and the record comes back with
     it: a baby scratch. Left at its centre a moment, the hand lets go and the motor takes the record again. Or grab
     the **platter** on the page with the mouse and drag round it.
+  - **THE NU RECORD** and **SAMPLE** (0.11.0): **BUILT IN** steps through our built-in records (THE HOUSE RECORD,
+    THE NU RECORD: a distorted shout, a drop-D power-chord stab, a feedback squeal and laser zap, palm-muted chugs).
+    **SAMPLE** records what PR7-T plays onto the deck shown, from your first sound until you press it again (30 s at
+    most), saved as a WAV in the Records folder beside your presets.
   - **The record**: **LOAD RECORD...** puts a sample on (WAV, AIFF, FLAC or Ogg, up to 3 minutes; the project
     remembers it). **HOUSE RECORD** is ours, built in: an "ahh", a horn stab, a drum break and a 1 kHz tone, two
     seconds apart, where the four cues start. The strip shows the record, the needle's place and the cues.

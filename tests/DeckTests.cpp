@@ -1699,3 +1699,258 @@ TEST_CASE ("THE DECKS' page: two turntables, each grabbed shows its deck on the 
     CHECK (p.processor.getDeck (1).isMotorOn());
     CHECK_FALSE (p.processor.getDeck (0).isMotorOn());
 }
+
+//==============================================================================
+// THE NU RECORD and SAMPLE (0.11.0).
+namespace
+{
+    // A record's own samples (left), from `from` to `to` seconds.
+    std::vector<float> recordSpan (const deck::Record& record, double from, double to)
+    {
+        const auto* data = record.levels[0].getReadPointer (0) + deck::Record::padding;
+        const auto first = (int) (from * record.sampleRate), last = juce::jmin (record.length, (int) (to * record.sampleRate));
+        return std::vector<float> (data + first, data + last);
+    }
+
+    // How strong `hz` is in `x` (a Goertzel filter's power, as dB re a full-scale sine).
+    double toneDb (const std::vector<float>& x, double hz, double rate)
+    {
+        const auto w = juce::MathConstants<double>::twoPi * hz / rate, c = 2.0 * std::cos (w);
+        double s1 = 0.0, s2 = 0.0;
+        for (const auto v : x)
+        {
+            const auto s0 = v + c * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        const auto power = s1 * s1 + s2 * s2 - c * s1 * s2;
+        return 10.0 * std::log10 (juce::jmax (1.0e-20, power)) - 20.0 * std::log10 (x.size() / 2.0);
+    }
+
+    // The strongest frequency between `low` and `high` Hz (in 10 Hz steps).
+    double strongestHz (const std::vector<float>& x, double low, double high, double rate)
+    {
+        auto best = low, bestDb = -1000.0;
+        for (auto hz = low; hz <= high; hz += 10.0)
+            if (const auto level = toneDb (x, hz, rate); level > bestDb)
+            {
+                bestDb = level;
+                best = hz;
+            }
+        return best;
+    }
+
+    double peakOf (const std::vector<float>& x)
+    {
+        float peak = 0.0f;
+        for (const auto v : x)
+            peak = juce::jmax (peak, std::abs (v));
+        return peak;
+    }
+}
+
+TEST_CASE ("THE NU RECORD: a distorted shout, a drop-D stab, a squeal and a zap, chugs; one at each cue", "[deck][nurecord]")
+{
+    const auto record = deck::nuRecord();
+    REQUIRE (record != nullptr);
+    CHECK (record->name == "NU RECORD");
+    CHECK_THAT (record->seconds(), WithinAbs (8.0, 1.0e-9));
+    CHECK (deck::nuRecord() == record);   // made once
+    const auto rate = record->sampleRate;
+    // Each sound starts at its cue (0, 25, 50, 75%: 0, 2, 4, 6 s), brought to the house record's peak; quiet between.
+    for (int part = 0; part < 4; ++part)
+    {
+        INFO ("part " << part);
+        CHECK_THAT (peakOf (recordSpan (*record, 2.0 * part, 2.0 * part + 2.0)), WithinAbs (0.7, 0.001));
+        CHECK (peakOf (recordSpan (*record, 2.0 * part, 2.0 * part + 0.05)) > 0.05);   // straight away
+    }
+    CHECK (peakOf (recordSpan (*record, 1.0, 1.9)) < 0.01);
+    CHECK (peakOf (recordSpan (*record, 3.3, 3.9)) < 0.01);
+
+    // The shout: through a megaphone's band (little under 150 Hz), a shout's raised first formant strong, and driven:
+    // far louder for its peak than a clean voice (its crest squashed).
+    const auto shout = recordSpan (*record, 0.1, 0.6);
+    CHECK (toneDb (shout, 60.0, rate) < -50.0);
+    const auto shoutRms = rms (shout, 0, shout.size());
+    CHECK (shoutRms / peakOf (shout) > 0.3);
+    // The stab: a drop-D chord (its D2 there), its clipping filling in the harmonics up to a few kHz; then choked.
+    const auto stab = recordSpan (*record, 2.02, 2.5);
+    CHECK (toneDb (stab, 73.42, rate) > toneDb (stab, 60.0, rate) + 10.0);
+    CHECK (rms (stab, 0, stab.size()) / peakOf (stab) > 0.3);   // compressed by the clipping, as a high-gain amp is
+    CHECK (toneDb (stab, 2000.0, rate) > -60.0);
+    CHECK (peakOf (recordSpan (*record, 3.15, 3.3)) < 0.01);
+    // The squeal: its pitch rising through 1.9 to 2.6 kHz; the zap diving after it.
+    const auto squealEarly = recordSpan (*record, 4.3, 4.45), squealLate = recordSpan (*record, 4.8, 4.95);
+    const auto early = strongestHz (squealEarly, 1000.0, 4000.0, rate), late = strongestHz (squealLate, 1000.0, 4000.0, rate);
+    INFO ("squeal " << early << " Hz, then " << late << " Hz");
+    CHECK (early > 1900.0);
+    CHECK (late > early + 200.0);
+    CHECK (late < 2700.0);
+    CHECK (peakOf (recordSpan (*record, 5.06, 5.38)) > 0.2);   // the zap
+    // The chugs: seven short hits a sixteenth apart (120 BPM), each dying away before the next.
+    for (int k = 0; k < 7; ++k)
+    {
+        INFO ("chug " << k);
+        const auto at = 6.0 + k * 0.125;
+        CHECK (peakOf (recordSpan (*record, at, at + 0.03)) > 0.15);
+        CHECK (peakOf (recordSpan (*record, at + 0.105, at + 0.124)) < 0.5 * peakOf (recordSpan (*record, at, at + 0.03)));
+    }
+}
+
+TEST_CASE ("THE NU RECORD on a deck: BUILT IN steps to it, the project and presets keep it", "[deck][nurecord][plugin]")
+{
+    Plugin p;
+    CHECK (p.processor.getBuiltInRecord (1) == 0);
+    p.processor.useBuiltInRecord (1, 1);
+    CHECK (p.processor.getDeckRecord (1) == deck::nuRecord());
+    CHECK (p.processor.getBuiltInRecord (1) == 1);
+    CHECK (p.processor.getDeckRecord (0) == deck::houseRecord());
+    juce::MemoryBlock state;
+    p.processor.getStateInformation (state);
+    Plugin restored;
+    restored.processor.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (restored.processor.getDeckRecord (1) == deck::nuRecord());
+    CHECK (restored.processor.getDeckRecordProblem (1).isEmpty());
+    // A preset naming it.
+    Rig rig;
+    rig.deckRecord = ParagonX1AudioProcessor::nuRecordRef;
+    Plugin q;
+    q.processor.loadRig (RigLibrary::Entry { *Rig::fromXml (*juce::XmlDocument::parse (rig.toXml()->toString())), {}, false });
+    CHECK (q.processor.getDeckRecord (0) == deck::nuRecord());
+
+    // The page's BUILT IN key: HOUSE, then NU, then HOUSE again; the screen calls it built in.
+    Plugin u;
+    DeckPage page (u.processor);
+    page.setSize (1476, 672);
+    auto* builtIn = dynamic_cast<juce::Button*> (page.getRack().findChildWithID ("deckHouse"));
+    REQUIRE (builtIn != nullptr);
+    builtIn->onClick();
+    CHECK (u.processor.getDeckRecord (0) == deck::nuRecord());
+    page.refreshForTest();
+    CHECK (page.getRack().getScreen().record == "NU RECORD");
+    CHECK (page.getRack().getScreen().caption.contains ("BUILT IN"));
+    builtIn->onClick();
+    CHECK (u.processor.getDeckRecord (0) == deck::houseRecord());
+}
+
+TEST_CASE ("SAMPLE: PR7-T's own output recorded onto a deck, from its first sound; saved, kept, trimmed, at the records' level", "[deck][sample][plugin]")
+{
+    const auto folder = juce::File::createTempFile ("pr7t-sample");
+    folder.createDirectory();
+    {
+        // Deck A's 1 kHz tone (the house record's DROP 4) is what plays; it's sampled onto DECK B.
+        Plugin p;
+        p.processor.useRigFolder (folder.getChildFile ("Rigs"));
+        p.set (ParamIDs::deckOn, 1.0f);
+        p.set (ParamIDs::deckStart, 0.05f);
+        p.set (ParamIDs::deckNeedle, 0.0f);
+        using State = ParagonX1AudioProcessor::SampleState;
+
+        // Armed with nothing playing: it waits (nothing taken); stopped then, it's cancelled.
+        p.processor.armSample (1);
+        CHECK (p.processor.getSampleState() == State::armed);
+        p.play (0.2);
+        CHECK (p.processor.getSampleState() == State::armed);
+        CHECK (p.processor.getSampleSeconds() == 0.0);
+        p.processor.stopSample();
+        CHECK (p.processor.getSampleState() == State::idle);
+
+        p.processor.armSample (1);
+        p.play (0.1);
+        const auto played = p.play (0.6, noteOn (24 + (int) deck::Key::drop4));
+        CHECK (p.processor.getSampleState() == State::recording);
+        CHECK_THAT (p.processor.getSampleSeconds(), WithinAbs (0.6, 0.02));   // from the tone's first sample
+        p.processor.stopSample();
+        p.play (0.05);   // the audio thread finishes the take
+        CHECK (p.processor.getSampleState() == State::done);
+        REQUIRE (p.processor.finishSample());
+        CHECK (p.processor.getSampleState() == State::idle);
+
+        // On DECK B now: a WAV in the Records folder, its sound the tone (1 kHz), at the built-in records' peak.
+        const auto record = p.processor.getDeckRecord (1);
+        REQUIRE (record != nullptr);
+        CHECK (record->name.startsWith ("Sample "));
+        const juce::File file (p.processor.getDeckRecordFile (1));
+        CHECK (file.existsAsFile());
+        CHECK (file.getParentDirectory() == folder.getChildFile ("Records"));
+        CHECK (p.processor.getDeckRecord (0) == deck::houseRecord());   // deck A's left alone
+        const auto take = recordSpan (*record, 0.0, record->seconds());
+        CHECK_THAT (peakOf (take), WithinAbs (0.7, 0.01));
+        CHECK_THAT (strongestHz (recordSpan (*record, 0.1, 0.5), 500.0, 2000.0, record->sampleRate), WithinAbs (1000.0, 10.0));
+        // It starts with the sound, no silence in front (the tone fading in as the motor comes up to speed: quiet, not silent).
+        CHECK (peakOf (recordSpan (*record, 0.0, 0.002)) > 0.001);
+        juce::ignoreUnused (played);
+        // The undo step and the preset's "*": changed by the user.
+        CHECK (p.processor.isRigModified());
+
+        // Stopped with no host playing (no blocks after): finished all the same.
+        p.processor.armSample (0);
+        p.play (0.3, noteOn (24 + (int) deck::Key::drop4));
+        p.processor.stopSample();
+        CHECK (p.processor.getSampleState() == State::stopping);
+        juce::Thread::sleep (350);
+        REQUIRE (p.processor.finishSample());
+        CHECK (p.processor.getDeckRecord (0)->name.startsWith ("Sample "));
+
+        // 30 s at most: it stops itself, full.
+        p.processor.armSample (1);
+        p.play (0.1, noteOn (24 + (int) deck::Key::drop4));
+        for (int k = 0; k < 4; ++k)
+            p.play (8.0, noteOn (24 + (int) deck::Key::drop4));
+        CHECK (p.processor.getSampleState() == State::done);
+        CHECK_THAT (p.processor.getSampleSeconds(), WithinAbs (ParagonX1AudioProcessor::sampleMaxSeconds, 0.001));
+        REQUIRE (p.processor.finishSample());
+    }
+    folder.deleteRecursively();
+}
+
+TEST_CASE ("SAMPLE on the rack: its key arms a take on the deck shown, lit while it records", "[deck][sample][ui]")
+{
+    const auto folder = juce::File::createTempFile ("pr7t-sample-ui");
+    folder.createDirectory();
+    Plugin p;
+    p.processor.useRigFolder (folder.getChildFile ("Rigs"));
+    p.set (ParamIDs::deckOn, 1.0f);
+    p.set (ParamIDs::deckStart, 0.05f);
+    DeckPage page (p.processor);
+    page.setSize (1476, 672);
+    page.selectDeck (1);
+    auto* key = dynamic_cast<juce::Button*> (page.getRack().findChildWithID ("deckSample"));
+    REQUIRE (key != nullptr);
+    CHECK (page.getRack().getLocalBounds().contains (key->getBounds()));
+    key->onClick();
+    CHECK (p.processor.getSampleState() == ParagonX1AudioProcessor::SampleState::armed);
+    CHECK (p.processor.getSampleDeck() == 1);
+    page.refreshForTest();
+    CHECK (page.getRack().getScreen().state == "SAMPLE ARMED");
+    p.play (0.3, noteOn (24 + (int) deck::Key::drop4));
+    page.refreshForTest();
+    CHECK (key->getToggleState());
+    CHECK (page.getRack().getScreen().state.startsWith ("SAMPLING"));
+    key->onClick();   // stop
+    p.play (0.05);
+    CHECK (p.processor.finishSample());
+    page.refreshForTest();
+    CHECK_FALSE (key->getToggleState());
+    CHECK (p.processor.getDeckRecord (1)->name.startsWith ("Sample "));
+    folder.deleteRecursively();
+}
+
+// Not a check: writes THE NU RECORD to a WAV to listen to (PARAGON_NU_WAV=<file> ParagonX1Tests "[.nurecordwav]").
+TEST_CASE ("THE NU RECORD written out to listen to", "[.nurecordwav]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_NU_WAV", {});
+    if (path.isEmpty())
+        return;
+    const auto record = deck::nuRecord();
+    juce::AudioBuffer<float> audio (1, record->length);
+    audio.copyFrom (0, 0, record->levels[0], 0, deck::Record::padding, record->length);
+    const juce::File file (path);
+    file.deleteFile();
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+    REQUIRE (stream != nullptr);
+    auto writer = wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (record->sampleRate).withNumChannels (1).withBitsPerSample (24));
+    REQUIRE (writer != nullptr);
+    CHECK (writer->writeFromAudioSampleBuffer (audio, 0, audio.getNumSamples()));
+}

@@ -711,7 +711,7 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
         sets[(size_t) d].onAttachment = std::make_unique<juce::ButtonParameterAttachment> (*state.getParameter (ParamIDs::deckIds[d].on), onKey);
         rack.addChildComponent (onKey);
     }
-    for (auto* key : { &loadKey, &houseKey })
+    for (auto* key : { &loadKey, &houseKey, &sampleKey })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         rack.addAndMakeVisible (*key);
@@ -720,8 +720,21 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     loadKey.setTooltip ("Puts a record on the deck the rack shows: a sample from a file (WAV, AIFF, FLAC or Ogg, up to 3 minutes). "
                         "The project and your presets remember it.");
     houseKey.setComponentID ("deckHouse");
-    houseKey.setTooltip ("Puts THE HOUSE RECORD on the deck the rack shows, our own built-in scratch record: an \"ahh\", a horn stab, "
-                         "a drum break and a 1 kHz tone, two seconds apart, at the cues' first places.");
+    houseKey.setTooltip ("A built-in record on the deck the rack shows (our own, synthesized), each press the next: THE HOUSE RECORD "
+                         "(an \"ahh\", a horn stab, a drum break, a 1 kHz tone) and THE NU RECORD (a distorted shouted \"AAH!\", a "
+                         "drop-D power-chord stab, a feedback squeal and laser zap, palm-muted chugs). Each sound sits at a cue.");
+    sampleKey.setComponentID ("deckSample");
+    sampleKey.setTooltip ("SAMPLE: records what PR7-T is playing (the synth, DRIVE and every effect) onto the deck the rack shows, to "
+                          "scratch. Press it, play: it starts at the first sound. Press again to stop (30 s at most). Saved as a WAV in "
+                          "the Records folder beside your presets, so projects and presets keep it.");
+    sampleKey.onClick = [this]
+    {
+        if (processor.getSampleState() == ParagonX1AudioProcessor::SampleState::idle)
+            processor.armSample (selected);
+        else
+            processor.stopSample();
+        timerCallback();
+    };
     loadKey.onClick = [this]
     {
         const auto d = selected;
@@ -737,7 +750,13 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
                                   timerCallback();
                               });
     };
-    houseKey.onClick = [this] { processor.useHouseRecord (selected); processor.deckRecordChangedByUser(); timerCallback(); };
+    houseKey.onClick = [this]
+    {
+        // 0.11.0: each press the next built-in record (a file on the deck: the first).
+        processor.useBuiltInRecord (processor.getBuiltInRecord (selected) == 0 ? 1 : 0, selected);
+        processor.deckRecordChangedByUser();
+        timerCallback();
+    };
     rack.onPageChanged = [this] { showRackPage(); };
     // A technique clicked on the SCRATCH screen: its key pressed on the deck shown, as long as the mouse is down (as from MIDI).
     rack.onScratchPressed = [this] (int technique, bool down)
@@ -922,7 +941,7 @@ void DeckPage::timerCallback()
     const auto problem = processor.getDeckRecordProblem (selected);
     const auto hand = processor.handDeck() == selected;
     DeckRack::Screen screen;
-    screen.caption = "DECK " + ParamIDs::deckNames[selected] + (processor.getDeckRecordFile (selected).isEmpty() ? "  -  THE RECORD: BUILT IN" : "  -  THE RECORD");
+    screen.caption = "DECK " + ParamIDs::deckNames[selected] + (processor.getBuiltInRecord (selected) >= 0 ? "  -  THE RECORD: BUILT IN" : "  -  THE RECORD");
     screen.record = record != nullptr ? record->name : juce::String ("NO RECORD");
     screen.state = ! on ? juce::String ("OFF")
                  : deck.getScratch() >= 0 ? deck::scratchNames[deck.getScratch()]   // 0.5.0: the technique playing
@@ -931,6 +950,30 @@ void DeckPage::timerCallback()
     screen.problem = problem.isNotEmpty();
     screen.line2 = screen.problem ? problem + ": THE HOUSE RECORD MEANWHILE"
                                   : "KEYS FROM " + noteName (settings.firstKey) + (hand ? "  -  PITCH WHEEL: THE HAND" : "  -  HAND: DECK " + ParamIDs::deckNames[1 - selected]);
+    // SAMPLE (0.11.0): its state on the screen, its key lit while it's recording (blinking while it waits for a sound).
+    {
+        using State = ParagonX1AudioProcessor::SampleState;
+        const auto sampling = processor.getSampleState();
+        const auto forThis = processor.getSampleDeck() == selected;
+        if (sampling == State::armed)
+        {
+            screen.state = "SAMPLE ARMED";
+            screen.line2 = "PLAY A SOUND: IT STARTS AT THE FIRST ONE, ONTO DECK " + ParamIDs::deckNames[processor.getSampleDeck()];
+        }
+        else if (sampling == State::recording || sampling == State::stopping)
+        {
+            screen.state = "SAMPLING " + juce::String (processor.getSampleSeconds(), 1) + " S";
+            screen.line2 = "PRESS SAMPLE TO STOP (30 S AT MOST), ONTO DECK " + ParamIDs::deckNames[processor.getSampleDeck()];
+        }
+        else if (processor.getSampleProblem().isNotEmpty() && forThis)
+        {
+            screen.problem = true;
+            screen.line2 = processor.getSampleProblem().toUpperCase();
+        }
+        const auto blink = (juce::Time::getMillisecondCounter() / 300) % 2 == 0;
+        sampleKey.setToggleState (sampling == State::recording || sampling == State::stopping || (sampling == State::armed && blink),
+                                  juce::dontSendNotification);
+    }
     rack.setScreen (screen);
     rack.setOn (on);
     const auto peak = processor.takeDeckPeak (selected);
@@ -1089,6 +1132,7 @@ void DeckPage::resized()
             deckKeys[(size_t) d].setBounds (rack.deckKeyCell (d));
         loadKey.setBounds (rack.keyCell (1));
         houseKey.setBounds (rack.keyCell (2));
+        sampleKey.setBounds (rack.keyCell (3));
     }
     else
         area.removeFromTop (36);   // the header (painted)

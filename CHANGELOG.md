@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.11.0
+
+**THE NU RECORD and SAMPLE: distorted sounds to scratch, built in and made by you.**
+
+Nu-metal's DJs cut up distorted, gritty sounds over the band. Two ways to get them now:
+
+- **THE NU RECORD**, a second built-in record, our own (synthesized by PR7-T, no one's recording), designed from
+  the sounds you described in your reference track: a scratched vocal, a distorted guitar stab, and noise and a
+  squeal. Four sounds, two seconds apart, one at each cue (DROP 1-4):
+  - **a shouted "AAH!"**, driven hard through a megaphone's narrow band, with a growl under it;
+  - **a drop-D power chord** (D, A, D) through a high-gain amp and speaker cabinet, choked short;
+  - **a feedback squeal** that swells and rises, then **a laser zap** diving down;
+  - **palm-muted chugs** at 120 BPM ending on an open chord, good for TRANSFORM.
+  The rack's **BUILT IN** key (was HOUSE) steps through the built-in records: THE HOUSE RECORD, THE NU RECORD.
+- **SAMPLE**, a new key under the rack's screen: it records what PR7-T is playing (the synth, the DRIVE and every
+  other effect, the decks too) onto the deck the rack shows, as its record, to scratch. Press it, then play: the take
+  starts at your first sound, so the record starts right on it. Press SAMPLE again to stop (30 seconds at most). The
+  key blinks while it waits and stays lit while it records; the screen shows the seconds. The take is trimmed and
+  brought to the built-in records' level, saved as a WAV in a **Records** folder beside your presets (on Windows:
+  `%APPDATA%\Paragon\Paragon PR7-T\Records`), and your project and presets keep it like any record you load.
+  Make a distorted stab with the synth and an insert bus's DRIVE, sample it, scratch it.
+- What's ours to guess: how close these sounds are to the ones you like (I can't play audio here). Tell me what to
+  push further: more or less distortion, a different word than "AAH", another chord, a harsher squeal.
+
 ## 0.9.1
 
 **The mixer between the decks in the turntables' Tron look.**

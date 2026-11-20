@@ -220,6 +220,202 @@ namespace deck
             }
         }
 
+        //======================================================================
+        // THE NU RECORD (0.11.0): the sounds nu-metal's DJs scratched over the band, our own, synthesized here. The
+        // owner's reference (a DJ part they like) had a scratched vocal, a distorted guitar stab and noise/squeal.
+        constexpr double twoPiD = juce::MathConstants<double>::twoPi;
+
+        // An overdriven stage: asymmetric (a valve's and a pedal's clipping isn't even), its offset taken back out.
+        double drive (double x, double gain, double bias = 0.15)
+        {
+            return std::tanh (gain * x + bias) - std::tanh (bias);
+        }
+
+        // A biquad (RBJ's cookbook) run over a span, for the record's filters (a cabinet's top, a megaphone's band).
+        struct Biquad
+        {
+            double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
+            static Biquad make (bool highPass, double hz, double q, double rate)
+            {
+                const auto w = twoPiD * hz / rate, alpha = std::sin (w) / (2.0 * q), c = std::cos (w), a0 = 1.0 + alpha;
+                Biquad f;
+                f.b0 = (highPass ? (1.0 + c) / 2.0 : (1.0 - c) / 2.0) / a0;
+                f.b1 = (highPass ? -(1.0 + c) : 1.0 - c) / a0;
+                f.b2 = f.b0;
+                f.a1 = -2.0 * c / a0;
+                f.a2 = (1.0 - alpha) / a0;
+                return f;
+            }
+            double run (double x)
+            {
+                const auto y = b0 * x + z1;
+                z1 = b1 * x - a1 * y + z2;
+                z2 = b2 * x - a2 * y;
+                return y;
+            }
+        };
+
+        // A plucked string (Karplus-Strong): a burst of noise round a loop as long as one cycle of `hz`, softened a
+        // little each time round. `damp` 0: ringing; towards 1: a palm on the strings (dark, short).
+        std::vector<double> pluck (double hz, double seconds, double rate, double damp, juce::Random& random)
+        {
+            const auto length = juce::jmax (2, (int) std::round (rate / hz));
+            std::vector<double> loop ((size_t) length), out ((size_t) (seconds * rate));
+            for (auto& v : loop)
+                v = random.nextDouble() * 2.0 - 1.0;
+            const auto keep = 0.4985 - 0.02 * damp, bright = 1.0 - 0.6 * damp;
+            double last = 0.0;
+            for (size_t i = 0; i < out.size(); ++i)
+            {
+                const auto at = i % (size_t) length;
+                const auto next = loop[(at + 1) % (size_t) length];
+                out[i] = loop[at];
+                const auto averaged = keep * (loop[at] + next);
+                loop[at] = bright * averaged + (1.0 - bright) * last;   // damped: darker each time round
+                last = loop[at];
+            }
+            return out;
+        }
+
+        // The guitar's rig: boosted into hard asymmetric clipping, then a 4x12 cabinet's band (80 Hz to about 4.5 kHz).
+        void amp (std::vector<double>& signal, double rate, double gain)
+        {
+            auto low = Biquad::make (true, 80.0, 0.7, rate), top1 = Biquad::make (false, 4500.0, 0.7, rate), top2 = Biquad::make (false, 5500.0, 0.6, rate);
+            auto mids = Biquad::make (true, 400.0, 0.5, rate);   // the pedal's tight low end before the clipping
+            for (auto& v : signal)
+            {
+                const auto tightened = v - 0.6 * (v - mids.run (v));
+                v = top2.run (top1.run (low.run (drive (tightened, gain, 0.2))));
+            }
+        }
+
+        void put (juce::AudioBuffer<float>& out, double rate, double start, const std::vector<double>& signal, double level = 1.0)
+        {
+            auto* l = out.getWritePointer (0);
+            const auto first = (int) (start * rate);
+            for (size_t i = 0; i < signal.size() && first + (int) i < out.getNumSamples(); ++i)
+                l[first + (int) i] += (float) (level * signal[i]);
+        }
+
+        void addShout (juce::AudioBuffer<float>& out, double rate, double start)
+        {
+            // A shouted "AAH!": a voice pushed hard (its first formant raised, as a shout's is: about 850, 1250, 2800
+            // Hz), pitch high and falling (290 to 230 Hz), a growl (a pulse every other cycle, the voice's fry), then
+            // driven hard through a megaphone's band (300 Hz to 3.5 kHz): the distorted vocal a DJ cuts up.
+            constexpr double seconds = 0.75;
+            const struct { double hz, width, gain; } formants[] = { { 850.0, 130.0, 1.0 }, { 1250.0, 150.0, 0.75 }, { 2800.0, 260.0, 0.45 } };
+            std::vector<double> voice ((size_t) (seconds * rate));
+            std::vector<double> phases (64, 0.0);
+            double growl = 0.0;
+            for (size_t i = 0; i < voice.size(); ++i)
+            {
+                const auto t = (double) i / rate;
+                const auto f0 = (290.0 - 60.0 * t / seconds) * (1.0 + 0.02 * std::sin (twoPiD * 7.0 * t));
+                const auto env = juce::jmin (1.0, t / 0.015) * juce::jmin (1.0, (seconds - t) / 0.12);
+                double sum = 0.0;
+                for (size_t h = 1; h < phases.size(); ++h)
+                {
+                    const auto f = f0 * (double) h;
+                    if (f > 6000.0)
+                        break;
+                    double shape = 0.03;
+                    for (const auto& formant : formants)
+                        shape += formant.gain * std::exp (-std::pow ((f - formant.hz) / formant.width, 2.0));
+                    phases[h] += f / rate;
+                    sum += shape / std::sqrt ((double) h) * std::sin (twoPiD * phases[h]);
+                }
+                growl += 0.5 * f0 / rate;
+                sum *= 0.7 + 0.3 * std::sin (twoPiD * growl);   // every other cycle louder: the fry under a shout
+                voice[i] = sum * env;
+            }
+            auto low = Biquad::make (true, 300.0, 0.7, rate), high = Biquad::make (false, 3500.0, 0.7, rate);
+            double peak = 1.0e-9;
+            for (auto v : voice)
+                peak = juce::jmax (peak, std::abs (v));
+            for (auto& v : voice)
+                v = high.run (low.run (drive (v / peak, 5.0, 0.1)));
+            put (out, rate, start, voice);
+        }
+
+        void addGuitarStab (juce::AudioBuffer<float>& out, double rate, double start, juce::Random& random)
+        {
+            // A drop-D power chord (D2, A2, D3) strummed down (8 ms between strings), let ring a moment and choked,
+            // through the rig.
+            constexpr double seconds = 1.1;
+            std::vector<double> chord ((size_t) (seconds * rate), 0.0);
+            const double strings[] = { 73.42, 110.0, 146.83 };
+            for (int s = 0; s < 3; ++s)
+            {
+                const auto string = pluck (strings[s], seconds, rate, 0.0, random);
+                const auto offset = (size_t) (0.008 * s * rate);
+                for (size_t i = 0; i + offset < chord.size(); ++i)
+                    chord[i + offset] += string[i];
+            }
+            for (size_t i = 0; i < chord.size(); ++i)
+            {
+                const auto t = (double) i / rate;
+                chord[i] *= juce::jmin (1.0, (seconds - t) / 0.08);   // choked by the hand
+            }
+            amp (chord, rate, 9.0);
+            put (out, rate, start, chord);
+        }
+
+        void addSqueal (juce::AudioBuffer<float>& out, double rate, double start, juce::Random& random)
+        {
+            // Feedback: a whine swelling in and rising (1.9 to 2.6 kHz) with a hand's vibrato, driven, with an edge of
+            // hiss; then a laser zap, a square diving from 6 kHz to 150 Hz.
+            constexpr double whine = 1.0, zap = 0.35, gap = 0.05;
+            std::vector<double> sound ((size_t) ((whine + gap + zap) * rate), 0.0);
+            double phase = 0.0;
+            for (size_t i = 0; i < (size_t) (whine * rate); ++i)
+            {
+                const auto t = (double) i / rate;
+                const auto hz = (1900.0 + 700.0 * t / whine) * (1.0 + 0.012 * std::sin (twoPiD * 6.0 * t));
+                phase += hz / rate;
+                const auto env = juce::jmin (1.0, t / 0.35) * juce::jmin (1.0, (whine - t) / 0.03);
+                const auto hiss = 0.08 * (random.nextDouble() * 2.0 - 1.0);
+                sound[i] = env * drive (std::sin (twoPiD * phase) + hiss, 2.5, 0.0);
+            }
+            phase = 0.0;
+            const auto zapStart = (size_t) ((whine + gap) * rate);
+            for (size_t i = 0; i < (size_t) (zap * rate); ++i)
+            {
+                const auto t = (double) i / rate;
+                const auto hz = 6000.0 * std::pow (150.0 / 6000.0, t / zap);
+                phase += hz / rate;
+                const auto env = juce::jmin (1.0, t / 0.003) * juce::jmin (1.0, (zap - t) / 0.02);
+                sound[zapStart + i] = 0.8 * env * drive (std::sin (twoPiD * phase), 4.0, 0.0);
+            }
+            put (out, rate, start, sound);
+        }
+
+        void addChugs (juce::AudioBuffer<float>& out, double rate, double start, juce::Random& random)
+        {
+            // Palm-muted D2 chugs, sixteenths at 120 BPM (seven), then an open D power chord to end on: the rhythm a
+            // TRANSFORM cuts up.
+            const auto step = 60.0 / 120.0 / 4.0;
+            std::vector<double> riff ((size_t) (1.55 * rate), 0.0);
+            for (int k = 0; k < 7; ++k)
+            {
+                auto chug = pluck (73.42, 0.16, rate, 0.85, random);
+                const auto fifth = pluck (110.0, 0.16, rate, 0.85, random);
+                for (size_t i = 0; i < chug.size(); ++i)
+                    chug[i] = (chug[i] + 0.8 * fifth[i]) * std::exp (-(double) i / rate / 0.05);
+                const auto at = (size_t) (k * step * rate);
+                for (size_t i = 0; i < chug.size() && at + i < riff.size(); ++i)
+                    riff[at + i] += 1.6 * chug[i];
+            }
+            const auto at = (size_t) (7 * step * rate);
+            for (const auto hz : { 73.42, 110.0, 146.83 })
+            {
+                const auto string = pluck (hz, 0.6, rate, 0.0, random);
+                for (size_t i = 0; i < string.size() && at + i < riff.size(); ++i)
+                    riff[at + i] += string[i] * juce::jmin (1.0, (0.6 - (double) i / rate) / 0.06);
+            }
+            amp (riff, rate, 9.0);
+            put (out, rate, start, riff);
+        }
+
         // Each part brought to the same peak (0.7), so none is much louder than the others.
         void normalise (juce::AudioBuffer<float>& audio, double rate, double from, double to)
         {
@@ -277,6 +473,25 @@ namespace deck
             for (int part = 0; part < 3; ++part)
                 normalise (audio, rate, 2.0 * part, 2.0 * part + 2.0);
             return makeRecord (audio, rate, "HOUSE RECORD");
+        }();
+        return record;
+    }
+
+    std::shared_ptr<const Record> nuRecord()
+    {
+        static const std::shared_ptr<const Record> record = []
+        {
+            constexpr double rate = 48000.0;
+            juce::AudioBuffer<float> audio (1, (int) (8.0 * rate));
+            audio.clear();
+            juce::Random random (2001);
+            addShout (audio, rate, 0.0);
+            addGuitarStab (audio, rate, 2.0, random);
+            addSqueal (audio, rate, 4.0, random);
+            addChugs (audio, rate, 6.0, random);
+            for (int part = 0; part < 4; ++part)
+                normalise (audio, rate, 2.0 * part, 2.0 * part + 2.0);
+            return makeRecord (audio, rate, "NU RECORD");
         }();
         return record;
     }
