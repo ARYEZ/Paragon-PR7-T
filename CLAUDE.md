@@ -28,7 +28,9 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 8. **Real scratches** (0.8.0, done): the library tuned to measurements of DJs; below.
 9. **The second deck** (0.9.0, done): below.
 10. **Distorted records** (0.11.0, done): THE NU RECORD and SAMPLE; below.
-11. **THE LIVE RECORD** (built, not released yet): a deck scratching what the synth just played; below.
+11. **THE LIVE RECORD** (0.12.0, done): a deck scratching what the synth just played; below.
+12. **FEEL and DIRT** (0.12.0, done): PR7-K's SCRATCH hand and mixer on the deck; below.
+13. **NU SCHOOL** (0.12.0, done): twelve scratch-style presets; below.
 
 ## THE DECK (0.2.0)
 
@@ -181,12 +183,12 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   BUILT IN key), `[sample]` (armed waits and cancels; from the first sound; stop; on DECK B as a WAV in Records at 0.7,
   1 kHz; no host playing; 30 s full; the rack's key and screen).
 
-## THE LIVE RECORD (not released yet)
+## THE LIVE RECORD (0.12.0)
 
 - **The owner's ask** (after PR7-K 1.11.0's SCRATCH, which cuts up what was just played: "can we take the sounds we had
   with scratch and add them to our playable instrument"; then "make the two clips and add the live record"). The two
   clips compared PR7-T's deck as it is with SCRATCH's hand and mixer (PR7-K's `effects::Scratch`) on the same routine;
-  bringing that hand and mixer over waits on the owner's verdict.
+  the owner chose SCRATCH's ("B sounds better, bring it in"): FEEL and DIRT, below.
 - **`deck::LiveTape`** (`source/dsp/deck/LiveTape.*`, our own design): the last 12 s (`seconds`; the ring rounds up to
   a power of two) of the synth, stereo, written by `processChunk` after each engine piece **while any deck is on**:
   the engine's mix plus every used insert bus's raw input, before the effects and **before any deck is added** (a deck
@@ -213,6 +215,45 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   behind ("S BEHIND NOW"), no cue flags (`DeckStrip::paintLive`); the rack's screen "x S BEHIND THE SYNTH".
   Snapshot: `PARAGON_SNAPSHOT_PAGE=deck PARAGON_SNAPSHOT_DECKLIVE=1` (a played phrase, a CHIRP on its newest note).
 - Tests: `tests/LiveRecordTests.cpp` (`[live]`).
+
+## FEEL and DIRT (0.12.0)
+
+- **The owner's ask:** "B sounds better, bring it in and release together" (B: PR7-K's SCRATCH hand and mixer on the
+  same routine as the deck's own; the sketch is in no file here). Our reading of SCRATCH on the deck, not a copy of its
+  routines: the deck's techniques, cartridge and mixer, changed as SCRATCH's are.
+- **Parameters** (`Parameters.h`, `DeckParameters.cpp`, version hint **50**, per deck: `deckFeel` / `deckDirt`,
+  `deckBFeel` / `deckBDirt`, appended to `DeckIds`): FEEL a switch, **on by default** (the parameter; `deck::Settings::feel`
+  stays false, so a bare deck and its tests are as before); DIRT 0-1. **Migration:** a project without `deckFeel`
+  (from before 0.12.0) gets FEEL off for both decks in `setStateInformation` (a PARAM child added before `replaceState`);
+  a preset holding `deckOn` but no `deckFeel` gets it off in `Rig::fromXml`. Factory presets that don't mention it get
+  the default (on). Tests that measure the clean deck in the plugin set FEEL off (`deckTone` in DeckTests).
+- **The engine** (`Deck.cpp`): `feelMix` fades FEEL in and out over 10 ms; at 0 nothing changes (bit-exact, tested).
+  - The hand: a technique's stroke `h` re-shaped by SCRATCH's `eased (acos (1 - 2h) / pi, 0.45)` (quick through the
+    middle); on its key, up to 5 ms late (`scratchDelay`, the record held, the fader open) and its stroke x 0.85-1.15
+    (`handRandom`, seeded by `seedRandom`).
+  - The cartridge: `sign x min (1, (|speed| / base) / 0.6)^0.6` blended in by `feelMix` (no +6 dB above normal speed).
+  - The mixer, after `DeckMixer`, before the crossfader: LEVEL taken out, a 150 Hz cut, `tanh (w / (3 x 0.2) x drive +
+    bias) - tanh (bias)` (drive 4.5 x 4^DIRT, bias 0.25 + 0.25 DIRT; a second `tanh` fuzz above DIRT 0.5), a 10 Hz DC
+    blocker, a bite (1.8 kHz, +5 + 4 DIRT dB), a 9 kHz top, the hand's hiss (1.2-5 kHz noise x 0.0069 x min (4, |speed|),
+    only while there's sound under the needle), x `driveReference` 0.2 / `driveOutput` (0.79 x 1.401^DIRT, measured on
+    a held tone so the level stays the record's whatever DIRT) x LEVEL. `prepareDrive` remakes the filters when DIRT moves.
+- **The rack**: SCRATCH's right half is the techniques' list, so FEEL shares MOD HAND's cell (two keys, as the KILLs)
+  and DIRT has knobCell 3; **HAND moved to ROUTING** (knobCell 3).
+- Measured: on the A/B routine, PR7-T with FEEL is 16% bright above 3 kHz (B 17%, the old deck 37%), about 2 dB under B.
+- Tests: `tests/FeelTests.cpp` (`[feel]`: off bit-exact; level within 3 dB, the 3rd harmonic strong, DIRT's 5th; LEVEL
+  +6 dB is +6; a cut silent; the soft cartridge at a quarter speed; lateness and stroke spread; defaults and migrations).
+
+## NU SCHOOL (0.12.0)
+
+- **The owner's ask:** "can you build in presets that give some of the most useful numetal style scratch styles?"; the
+  name the owner's. `scratchStyles` in `ExpansionRigs.cpp`, expansion 27 ("NU", NU01-NU12): **12, not 18, and no
+  categories or macros** (the expansion tests check it on its own shape and skip the synth banks' macro rules).
+- Each: THE DECK on, FEEL on, a record (`Rig::deckRecord` "{record:nu}", Live Synth Cuts "{record:live}"), REACH, RATE,
+  CART, DIRT, LEVEL (+4 dB, some evened to -15 to -17 loudness on their routine), the mixer and FX for the style; the
+  synth's own keys a quiet saw (osc 1 at 0.3). Live Synth Cuts: three saws through a tube shaper, the LIMITER at -1 dBFS.
+  Our own settings, no band or song named.
+- Tests: `tests/ScratchStyleTests.cpp` (`[nuschool]`: each routine sounds, no NaN, under 0 dBFS; `[.scratchrender]`
+  writes a clip of each, `PARAGON_RENDER` the folder).
 
 ## The project
 
