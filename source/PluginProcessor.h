@@ -622,6 +622,7 @@ private:
     synth::Engine engine;
     juce::MidiKeyboardState keyboardState;
     juce::MidiBuffer keyboardMidi;   // the DAW's MIDI plus the on-screen keyboard's, per block
+    juce::MidiBuffer onScreenMidi;   // (0.12.1) the on-screen keyboard's, gathered to the block's start
     // THE DECK: the turntable, and its share of the MIDI (its 12 keys and the pitch wheel, taken from the synth's
     // while it's on). Its record handed to the audio thread as the MIMIC recording is: a plain pointer, a replaced
     // one kept 2 s so a block still playing it never reads freed memory.

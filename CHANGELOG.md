@@ -7,6 +7,7 @@ Each version's notes appear on its GitHub Release page.
 - **DEMO MIDI** on the DECK page: while a NU SCHOOL preset is loaded, a DEMO MIDI button beside HIDE RACK holds its demo routine as a MIDI file. Drag it onto a track in your DAW (or click it to save it) and play it back to hear exactly how the demo was made: which keys drop the needle, which scratch keys play, and for how long each is held.
 - The notes are placed in beats, so they sit on your DAW's grid at any tempo (the demo clips were at 95 BPM). The deck's scratches follow the DAW's tempo too, so the notes and the moves always line up.
 - The button only shows for the twelve NU SCHOOL presets; other presets have no demo.
+- **Fixed:** keys pressed on the on-screen keyboard (and the deck page's key buttons) now start at the very start of the next audio block. Before, a chord clicked at once could start its notes up to a block apart. This also fixes a test that failed now and then on Windows (PR7-K's fix from its 1.2.0).
 
 ## 0.12.0
 

@@ -286,6 +286,7 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     if (juce::MessageManager::existsAndIsCurrentThread())
         updateWavetables();
     keyboardMidi.ensureSize (2048);
+    onScreenMidi.ensureSize (512);
     for (auto& midi : deckMidi)
         midi.ensureSize (2048);
     deckScratch.setSize (2, 512);   // a piece of processChunk at most (its scratchRight's size)
@@ -1202,7 +1203,16 @@ void ParagonX1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     // The on-screen keyboard's notes join the DAW's.
     keyboardMidi.clear();
     keyboardMidi.addEvents (midi, 0, numSamples, 0);
-    keyboardState.processNextMidiBuffer (keyboardMidi, 0, numSamples, true);
+    // (0.12.1, PR7-K 1.2.0's fix) The DAW's notes update the keyboard's display; the on-screen keys pressed since the
+    // last block all start at its first sample. JUCE would spread them across the block by the millisecond each was
+    // pressed, so a chord pressed at once could start up to a block apart (and two identical test renders differ,
+    // under load: RACK's off test on Windows CI). (The on-screen presses first: every call, JUCE drops the presses it
+    // hasn't handed on.)
+    onScreenMidi.clear();
+    keyboardState.processNextMidiBuffer (onScreenMidi, 0, numSamples, true);
+    keyboardState.processNextMidiBuffer (keyboardMidi, 0, numSamples, false);
+    for (const auto metadata : onScreenMidi)
+        keyboardMidi.addEvent (metadata.getMessage(), 0);
     if (const auto wheel = pendingModWheel.exchange (-1.0f); wheel >= 0.0f)
         keyboardMidi.addEvent (juce::MidiMessage::controllerEvent (1, 1, juce::roundToInt (wheel * 127.0f)), 0);
     if (const auto pedal = pendingExpression.exchange (-1.0f); pedal >= 0.0f)
