@@ -104,6 +104,7 @@ target_sources(ParagonX1
         # THE DECK (PR7-T 0.2.0): the turntable.
         source/dsp/deck/Deck.cpp
         source/dsp/deck/DeckMixer.cpp
+        source/dsp/deck/LiveTape.cpp
         source/dsp/effects/Drive.cpp
         source/dsp/effects/Glitch.cpp
         source/dsp/effects/Abyss.cpp

@@ -372,6 +372,9 @@ public:
     // 0.11.0: the built-in records (0 THE HOUSE RECORD, 1 THE NU RECORD), named in projects and presets as a file is
     // ("": the house record, as before; nuRecordRef: the nu record). putRecord puts any of them, or a file, on a deck.
     static constexpr const char* nuRecordRef = "{record:nu}";
+    static constexpr const char* liveRecordRef = "{record:live}";   // 0.12.0: THE LIVE RECORD (built-in 2)
+    // THE LIVE RECORD's tape: what the synth played (for the page's strip).
+    const deck::LiveTape& getLiveTape() const noexcept { return liveTape; }
     void useBuiltInRecord (int which, int d = 0);
     int getBuiltInRecord (int d = 0) const;   // which is on the deck (-1: a file)
     void putRecord (const juce::String& ref, int d);
@@ -621,6 +624,10 @@ private:
     std::array<deck::Deck, ParamIDs::numDecks> decks;
     std::array<juce::MidiBuffer, ParamIDs::numDecks> deckMidi;
     juce::MidiBuffer synthMidi;             // (what's left for the synth, swapped back in)
+    // 0.12.0: THE LIVE RECORD: the last 12 s of what the synth played (written while a deck is on), and a piece of it
+    // before it goes on the tape (the synth's mix and its insert buses' sound).
+    deck::LiveTape liveTape;
+    juce::AudioBuffer<float> tapeScratch;
     juce::AudioBuffer<float> deckScratch;   // 0.7.0: a piece of a deck, before its routing
     struct DeckSide
     {

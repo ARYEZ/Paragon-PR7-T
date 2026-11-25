@@ -1818,7 +1818,7 @@ TEST_CASE ("THE NU RECORD on a deck: BUILT IN steps to it, the project and prese
     q.processor.loadRig (RigLibrary::Entry { *Rig::fromXml (*juce::XmlDocument::parse (rig.toXml()->toString())), {}, false });
     CHECK (q.processor.getDeckRecord (0) == deck::nuRecord());
 
-    // The page's BUILT IN key: HOUSE, then NU, then HOUSE again; the screen calls it built in.
+    // The page's BUILT IN key: HOUSE, then NU, then LIVE (0.12.0), then HOUSE again; the screen calls it built in.
     Plugin u;
     DeckPage page (u.processor);
     page.setSize (1476, 672);
@@ -1829,6 +1829,8 @@ TEST_CASE ("THE NU RECORD on a deck: BUILT IN steps to it, the project and prese
     page.refreshForTest();
     CHECK (page.getRack().getScreen().record == "NU RECORD");
     CHECK (page.getRack().getScreen().caption.contains ("BUILT IN"));
+    builtIn->onClick();
+    CHECK (u.processor.getDeckRecord (0) == deck::liveRecord());
     builtIn->onClick();
     CHECK (u.processor.getDeckRecord (0) == deck::houseRecord());
 }

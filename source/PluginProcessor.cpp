@@ -288,10 +288,15 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     for (auto& midi : deckMidi)
         midi.ensureSize (2048);
     deckScratch.setSize (2, 512);   // a piece of processChunk at most (its scratchRight's size)
+    tapeScratch.setSize (2, 512);
+    liveTape.prepare (sampleRate);
     synthMidi.ensureSize (2048);
     keyboardState.reset();
     for (auto& d : decks)
+    {
         d.prepare (sampleRate);
+        d.setLiveTape (&liveTape);
+    }
 
     outputGain.reset (sampleRate, gainRampSeconds);
     expressionGain.reset (sampleRate, 0.03);
@@ -1463,6 +1468,16 @@ void ParagonX1AudioProcessor::useHouseRecord (int d)
 
 void ParagonX1AudioProcessor::useBuiltInRecord (int which, int d)
 {
+    if (which == 2)
+    {
+        // 0.12.0: THE LIVE RECORD, what the synth just played.
+        auto& side = deckSides[(size_t) d];
+        side.file = liveRecordRef;
+        side.problem = {};
+        if (side.record != deck::liveRecord())
+            setDeckRecord (deck::liveRecord(), d);
+        return;
+    }
     if (which != 1)
     {
         useHouseRecord (d);
@@ -1478,7 +1493,7 @@ void ParagonX1AudioProcessor::useBuiltInRecord (int which, int d)
 int ParagonX1AudioProcessor::getBuiltInRecord (int d) const
 {
     const auto& file = deckSides[(size_t) d].file;
-    return file.isEmpty() ? 0 : file == nuRecordRef ? 1 : -1;
+    return file.isEmpty() ? 0 : file == nuRecordRef ? 1 : file == liveRecordRef ? 2 : -1;
 }
 
 void ParagonX1AudioProcessor::putRecord (const juce::String& ref, int d)
@@ -1487,6 +1502,8 @@ void ParagonX1AudioProcessor::putRecord (const juce::String& ref, int d)
         useHouseRecord (d);
     else if (ref == nuRecordRef)
         useBuiltInRecord (1, d);
+    else if (ref == liveRecordRef)
+        useBuiltInRecord (2, d);
     else if (ref != deckSides[(size_t) d].file || deckSides[(size_t) d].problem.isNotEmpty())
         loadDeckRecord (juce::File (ref), d);
 }
@@ -1770,6 +1787,10 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         for (auto& send : rack->sends)
             send.clear (0, numSamples);
     const auto chunkClock = engine.getSampleClock();   // 0.64.0: PROXIMITY's touches are placed from here
+    // 0.12.0: THE LIVE RECORD's tape keeps what the synth plays while a deck is on.
+    auto anyDeckOn = false;
+    for (const auto& r : deckRouting)
+        anyDeckOn = anyDeckOn || r.on;
     for (int done = 0; done < numSamples; done += (int) std::size (scratchRight))
     {
         const auto n = juce::jmin ((int) std::size (scratchRight), numSamples - done);
@@ -1831,7 +1852,25 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         }
         settings.modulation.ppq = hostPpq >= 0.0 ? hostPpq + (start + done) / getSampleRate() * settings.modulation.bpm / 60.0 : -1.0;
         engine.setStreamer (sfzStreamerForAudio.load(), isNonRealtime());
+        const auto pieceClock = engine.getSampleClock();
         engine.process (left + done, right, n, midi, start + done, settings);
+        if (anyDeckOn)
+        {
+            // THE LIVE RECORD (0.12.0): the synth, every oscillator (the ones going to an insert bus too), before its
+            // effects and before any deck is added, so a deck never scratches its own scratching.
+            auto* tapeL = tapeScratch.getWritePointer (0);
+            auto* tapeR = tapeScratch.getWritePointer (1);
+            juce::FloatVectorOperations::copy (tapeL, left + done, n);
+            juce::FloatVectorOperations::copy (tapeR, right, n);
+            if (sendsReady)
+                for (auto& bus : rack->buses)
+                    if (bus.used)
+                    {
+                        juce::FloatVectorOperations::add (tapeL, bus.buffer.getReadPointer (0, done), n);
+                        juce::FloatVectorOperations::add (tapeR, bus.buffer.getReadPointer (1, done), n);
+                    }
+            liveTape.write (tapeL, tapeR, n, pieceClock);
+        }
         // THE DECK, added to the synth: from here on it goes through everything the synth does (the rack, OUTPUT, the LIMITER).
         for (int d = 0; d < ParamIDs::numDecks; ++d)
         {
@@ -1891,6 +1930,9 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         // PROXIMITY (0.65.0): this piece's touches of playing (notes, arps, the pedal), on their samples.
         std::array<synth::Engine::Touch, synth::Engine::maxTouches> touches;
         const auto count = engine.takeTouches (touches.data(), (int) touches.size());
+        for (int k = 0; k < count; ++k)
+            if (touches[(size_t) k].kind == synth::Engine::Touch::Kind::press)
+                liveTape.addHit (touches[(size_t) k].clock);   // 0.12.0: where THE LIVE RECORD's drops and scratches land
         for (int k = 0; k < count; ++k)
             rack->proximity.addTouch ((int) juce::jlimit<std::int64_t> (0, numSamples - 1, touches[(size_t) k].clock - chunkClock),
                                       touches[(size_t) k].note, touches[(size_t) k].velocity, (effects::Proximity::Kind) touches[(size_t) k].kind);

@@ -1,4 +1,5 @@
 #include "Deck.h"
+#include "DeckKernel.h"
 
 #include <cmath>
 
@@ -6,81 +7,14 @@ namespace deck
 {
     namespace
     {
-        // THE INTERPOLATOR's kernel: a sinc, windowed (Kaiser, beta 8: about 80 dB down outside the band) to 8 zero
-        // crossings either side, tabled at 512 points per crossing and read by straight lines between them.
-        constexpr int zeroCrossings = 8;
-        constexpr int tableResolution = 512;
-        constexpr double kaiserBeta = 8.0;
+        // The interpolator's kernel and the half-band filter: DeckKernel.h (shared with THE LIVE RECORD's tape).
+        using kernels::zeroCrossings;
+        using kernels::kernelTable;
+        using kernels::kernel;
+        using kernels::halfBand;
 
-        double besselI0 (double x) noexcept
-        {
-            double sum = 1.0, term = 1.0;
-            for (int k = 1; k < 40; ++k)
-            {
-                term *= (x / (2.0 * k)) * (x / (2.0 * k));
-                sum += term;
-                if (term < 1.0e-12 * sum)
-                    break;
-            }
-            return sum;
-        }
-
-        const std::vector<float>& kernelTable()
-        {
-            static const std::vector<float> table = []
-            {
-                std::vector<float> t ((size_t) (zeroCrossings * tableResolution + 2), 0.0f);
-                const auto norm = besselI0 (kaiserBeta);
-                for (int k = 0; k <= zeroCrossings * tableResolution; ++k)
-                {
-                    const auto u = (double) k / tableResolution;
-                    const auto sinc = k == 0 ? 1.0 : std::sin (juce::MathConstants<double>::pi * u) / (juce::MathConstants<double>::pi * u);
-                    const auto x = u / zeroCrossings;
-                    t[(size_t) k] = (float) (sinc * besselI0 (kaiserBeta * std::sqrt (juce::jmax (0.0, 1.0 - x * x))) / norm);
-                }
-                return t;
-            }();
-            return table;
-        }
-
-        // The kernel at `u` zero crossings from its centre (0 beyond the window).
-        inline float kernel (const float* table, double u) noexcept
-        {
-            const auto at = std::abs (u) * tableResolution;
-            const auto index = (int) at;
-            if (index >= zeroCrossings * tableResolution)
-                return 0.0f;
-            const auto frac = (float) (at - index);
-            return table[index] + frac * (table[index + 1] - table[index]);
-        }
-
-        // Half a band: `from` (padded) filtered to below half its Nyquist and every other sample kept, into `to` (padded).
-        // The filter: a windowed sinc, 127 taps (Kaiser beta 9, about 90 dB down), its cutoff at 0.454 of the band so
-        // its stopband starts at the new Nyquist (nothing folds back as it's halved); flat to about 0.41 of the band.
-        // Centred (it looks ahead as far as behind), so every copy lines up with the sample.
-        const std::vector<double>& halfBand()
-        {
-            static const std::vector<double> h = []
-            {
-                constexpr int side = 63;
-                constexpr double cutoff = 0.5 * 0.454, beta = 9.0;
-                std::vector<double> taps ((size_t) (2 * side + 1));
-                double sum = 0.0;
-                for (int n = -side; n <= side; ++n)
-                {
-                    const auto x = 2.0 * cutoff * n;
-                    const auto sinc = n == 0 ? 1.0 : std::sin (juce::MathConstants<double>::pi * x) / (juce::MathConstants<double>::pi * x);
-                    const auto w = besselI0 (beta * std::sqrt (juce::jmax (0.0, 1.0 - std::pow ((double) n / side, 2.0)))) / besselI0 (beta);
-                    taps[(size_t) (n + side)] = sinc * w;
-                    sum += sinc * w;
-                }
-                for (auto& t : taps)
-                    t /= sum;   // exactly unity at DC
-                return taps;
-            }();
-            return h;
-        }
-
+        // Half a band: `from` (padded) filtered to below half its Nyquist (halfBand) and every other sample kept,
+        // into `to` (padded).
         void halve (const juce::AudioBuffer<float>& from, int fromLength, juce::AudioBuffer<float>& to, int toLength)
         {
             const auto& h = halfBand();
@@ -496,6 +430,20 @@ namespace deck
         return record;
     }
 
+    std::shared_ptr<const Record> liveRecord()
+    {
+        static const std::shared_ptr<const Record> record = []
+        {
+            auto r = std::make_shared<Record>();
+            r->name = "LIVE";
+            r->live = true;
+            r->sampleRate = 48000.0;
+            r->length = (int) (LiveTape::seconds * r->sampleRate);
+            return std::shared_ptr<const Record> (r);
+        }();
+        return record;
+    }
+
     float faderGain (float fader, float curve, bool hamster) noexcept
     {
         const auto x = juce::jlimit (0.0f, 1.0f, hamster ? 1.0f - fader : fader);
@@ -633,6 +581,32 @@ namespace deck
         crackleLevel = 0.6f * velocity;
     }
 
+    double Deck::liveDropPlace (int cue) const noexcept
+    {
+        // DROP 1 the newest key press, DROP 2 the one before, and so on (each 4 ms before its press, so the attack's
+        // whole); none yet: half a second back.
+        if (tape == nullptr)
+            return position;
+        const auto rate = tape->getSampleRate();
+        const auto at = tape->hit (cue, 0.03 * rate);
+        const auto place = at >= 0.0 ? at - 0.004 * rate : liveHigh - 0.5 * rate;
+        return juce::jlimit (liveLow, juce::jmax (liveLow, liveHigh), place);
+    }
+
+    double Deck::liveScratchPlace (double strokeSamples) const noexcept
+    {
+        // As PR7-K's SCRATCH parks its needle: just before the newest key press far enough back for the stroke to
+        // push the record forward without passing the newest sound; none: that far back and a quarter second more.
+        if (tape == nullptr)
+            return position;
+        const auto rate = tape->getSampleRate();
+        const auto need = strokeSamples + 0.03 * rate;
+        const auto at = tape->hit (0, need);
+        const auto place = at >= 0.0 && (double) tape->getEnd() - at <= 3.0 * rate ? at - 0.004 * rate
+                                                                                 : liveHigh - need - 0.25 * rate;
+        return juce::jlimit (liveLow, juce::jmax (liveLow, liveHigh), place);
+    }
+
     void Deck::handleMidi (const juce::MidiMessage& message, const Record* record, const Settings& settings) noexcept
     {
         if (message.isController() && message.getControllerNumber() == 1)
@@ -672,6 +646,12 @@ namespace deck
                 return;
             if (message.isNoteOn() && hand != Hand::mouse)
             {
+                if (record != nullptr && record->live && hand == Hand::none && std::abs (speed) < 0.05)
+                {
+                    const auto stroke = (double) settings.scratchReach * secondsPerTurn * (tape != nullptr ? tape->getSampleRate() : 48000.0);
+                    dropNeedle (liveScratchPlace (stroke), 0.0f);
+                    fadeLeft = 0;   // the record was still: nothing to fade out
+                }
                 grab (Hand::scratch);
                 scratchTechnique = technique;
                 scratchHeld = true;
@@ -713,8 +693,13 @@ namespace deck
             case Key::drop1: case Key::drop2: case Key::drop3: case Key::drop4:
             {
                 const auto cue = key == (int) Key::drop1 ? 0 : key == (int) Key::drop2 ? 1 : key == (int) Key::drop3 ? 2 : 3;
-                const auto length = record != nullptr ? record->length : 0;
-                dropNeedle (juce::jlimit (0.0f, 1.0f, settings.cues[(size_t) cue]) * length, message.getFloatVelocity() * settings.needle);
+                if (record != nullptr && record->live)
+                    dropNeedle (liveDropPlace (cue), message.getFloatVelocity() * settings.needle);
+                else
+                {
+                    const auto length = record != nullptr ? record->length : 0;
+                    dropNeedle (juce::jlimit (0.0f, 1.0f, settings.cues[(size_t) cue]) * length, message.getFloatVelocity() * settings.needle);
+                }
                 motorOn = true;   // onto a turning record
                 spinning = false;
                 break;
@@ -728,8 +713,26 @@ namespace deck
     void Deck::process (float* left, float* right, int numSamples, const juce::MidiBuffer& midi, int firstSample,
                         const Record* record, const Settings& settings) noexcept
     {
-        const auto recordRate = record != nullptr ? record->sampleRate : 48000.0;
-        const auto length = record != nullptr ? (double) record->length : 0.0;
+        // THE LIVE RECORD (0.12.0): the tape, read between its oldest and newest sound (in the engine's clock).
+        const auto* liveTape = record != nullptr && record->live ? tape : nullptr;
+        const auto live = liveTape != nullptr;
+        if (record != nullptr && record->live && liveTape == nullptr)
+            record = nullptr;   // no tape (none set): silence
+        const auto recordRate = live ? liveTape->getSampleRate() : record != nullptr ? record->sampleRate : 48000.0;
+        auto low = 0.0, high = record != nullptr ? (double) record->length : 0.0;
+        if (live)
+        {
+            low = liveTape->oldest();
+            high = juce::jmax (low, liveTape->newest());
+            if (! wasLive)
+                position = high;   // put on: the needle at the newest sound
+        }
+        else if (wasLive)
+            position = 0.0;   // a record put on in its place: from its start
+        wasLive = live;
+        liveLow = low;
+        liveHigh = high;
+        const auto length = high;   // (the far end; `low` the near one: 0 on a record)
         const auto ratio = recordRate / hostRate;          // the record's samples per output sample at its natural speed
         const auto base = (double) settings.baseSpeed();   // what the motor turns it at
         const auto startStep = base / juce::jmax (0.01, (double) settings.startSeconds) / hostRate;
@@ -780,8 +783,7 @@ namespace deck
             if (std::abs (wheel) > 1.0e-6f)
                 grab (Hand::wheel);
         }
-        if (position > length)
-            position = length;   // a shorter record put on
+        position = juce::jlimit (low, length, position);   // a shorter record put on (or the tape moved on)
 
         float blockPeak = 0.0f;
         auto events = midi.findNextSamplePosition (firstSample);
@@ -835,7 +837,7 @@ namespace deck
                 const auto target = handAnchor + turns * turnSamples;
                 handSmooth1 += handFollow * (target - handSmooth1);
                 handSmooth2 += handFollow * (handSmooth1 - handSmooth2);
-                const auto next = juce::jlimit (0.0, length, handSmooth2);
+                const auto next = juce::jlimit (low, length, handSmooth2);
                 speed = (next - position) / ratio;
                 position = next;
                 if (hand == Hand::wheel)
@@ -869,31 +871,31 @@ namespace deck
                 // WEAR's warp: the record's speed wobbling once a turn (+-0.4% at full wear), by where the needle is in
                 // the turn (a warp is a place on the record).
                 const auto warp = wear > 0.0f ? 1.0 + 0.004 * wear * std::sin (juce::MathConstants<double>::twoPi * position / turnSamples) : 1.0;
-                position = juce::jlimit (0.0, length, position + speed * ratio * warp);
+                position = juce::jlimit (low, length, position + speed * ratio * warp);
             }
 
             const auto rate = speed * ratio;
             const auto loudness = (float) juce::jlimit (-2.0, 2.0, speed / juce::jmax (0.01, base));   // the cartridge: level with speed
             const auto level = gain.getNextValue();
             float outL = 0.0f, outR = 0.0f;
-            if (record != nullptr && length > 0.0 && std::abs (loudness) > 1.0e-6f)
+            if (record != nullptr && length > low && std::abs (loudness) > 1.0e-6f)
             {
-                outL = read (*record, 0, position, rate);
-                outR = read (*record, 1, position, rate);
+                outL = live ? liveTape->read (0, position, rate) : read (*record, 0, position, rate);
+                outR = live ? liveTape->read (1, position, rate) : read (*record, 1, position, rate);
             }
             if (fadeLeft > 0)
             {
                 // A jump: the old place fades out under the new.
                 const auto f = (float) fadeLeft / (float) fadeLength;
                 float oldL = 0.0f, oldR = 0.0f;
-                if (record != nullptr && length > 0.0)
+                if (record != nullptr && length > low)
                 {
-                    oldL = read (*record, 0, fadePosition, rate);
-                    oldR = read (*record, 1, fadePosition, rate);
+                    oldL = live ? liveTape->read (0, fadePosition, rate) : read (*record, 0, fadePosition, rate);
+                    oldR = live ? liveTape->read (1, fadePosition, rate) : read (*record, 1, fadePosition, rate);
                 }
                 outL = outL * (1.0f - f) + oldL * f;
                 outR = outR * (1.0f - f) + oldR * f;
-                fadePosition = juce::jlimit (0.0, length, fadePosition + rate);
+                fadePosition = juce::jlimit (low, length, fadePosition + rate);
                 --fadeLeft;
             }
             outL *= loudness;
@@ -963,6 +965,7 @@ namespace deck
             handleMidi ((*events).getMessage(), record, settings);
 
         shownPosition.store (position / recordRate, std::memory_order_relaxed);
+        shownBehind.store (live ? juce::jmax (0.0, ((double) liveTape->getEnd() - position) / recordRate) : 0.0, std::memory_order_relaxed);
         shownSpeed.store ((float) speed, std::memory_order_relaxed);
         shownMotor.store (motorOn, std::memory_order_relaxed);
         shownFader.store (faderNow, std::memory_order_relaxed);

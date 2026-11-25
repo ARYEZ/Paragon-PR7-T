@@ -3,6 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
 #include "DeckMixer.h"
+#include "LiveTape.h"
 
 #include <array>
 #include <atomic>
@@ -40,6 +41,9 @@ namespace deck
         std::array<float, overviewBins> overview {};
 
         double seconds() const noexcept { return length / sampleRate; }
+        // THE LIVE RECORD (0.12.0): not a sample but a sign that the deck plays its LiveTape (`Deck::setLiveTape`):
+        // no levels, its length the tape's (for the page).
+        bool live = false;
     };
 
     // Makes a record from audio (mono is played on both sides). The filtered copies are built here (a few ms a
@@ -60,6 +64,8 @@ namespace deck
     // through a megaphone's band; a drop-D power chord through a high-gain rig; a feedback squeal rising, then a laser
     // zap; palm-muted chugs at 120 BPM ending on an open chord.
     std::shared_ptr<const Record> nuRecord();
+    // THE LIVE RECORD (0.12.0): the deck plays what the synth just played (its LiveTape); see LiveTape.h.
+    std::shared_ptr<const Record> liveRecord();
     inline constexpr double houseToneStart = 6.0, houseToneSeconds = 1.6, houseToneHz = 1000.0;
 
     // One record's place in seconds, per turn of the platter: the groove's 33 1/3 RPM (60 / 33.333 s).
@@ -147,6 +153,10 @@ namespace deck
         // The mouse's hand on the platter (the page): while `holding`, the record follows it, `turns` being how far
         // it has been turned since it was grabbed (forward positive). Read at the start of each block.
         void setMouseHand (bool holding, float turns) noexcept { mouseTurns = turns; mouseHolding = holding; }
+        // THE LIVE RECORD's tape, played while the deck's record is `liveRecord()` (the processor's; set once).
+        void setLiveTape (const LiveTape* t) noexcept { tape = t; }
+        // On THE LIVE RECORD: how far behind the newest sound the needle is, in seconds (0 where it can't be read).
+        double getLiveBehindSeconds() const noexcept { return shownBehind.load (std::memory_order_relaxed); }
 
         // Lets go of every held key (HOLD, CUT, TRANSFORM, a technique): their note-offs won't come to the deck (it's
         // off, or its keys moved). Audio thread.
@@ -171,6 +181,9 @@ namespace deck
     private:
         enum class Hand { none, wheel, mouse, scratch, modWheel };
         void handleMidi (const juce::MidiMessage&, const Record*, const Settings&) noexcept;
+        // THE LIVE RECORD: where a needle drop or a technique lands (the key presses kept by the tape).
+        double liveDropPlace (int cue) const noexcept;
+        double liveScratchPlace (double strokeSamples) const noexcept;
         void dropNeedle (double toSamples, float velocity) noexcept;
         void grab (Hand) noexcept;
 
@@ -231,5 +244,10 @@ namespace deck
         std::atomic<float> shownFader { 1.0f };
         std::atomic<float> peak { 0.0f };
         std::atomic<int> shownScratch { -1 };
+        std::atomic<double> shownBehind { 0.0 };
+
+        const LiveTape* tape = nullptr;
+        bool wasLive = false;                  // the last block played THE LIVE RECORD
+        double liveLow = 0.0, liveHigh = 0.0;  // this block's readable stretch of the tape
     };
 }

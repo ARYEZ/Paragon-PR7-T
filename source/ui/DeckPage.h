@@ -70,6 +70,8 @@ private:
     ParagonX1AudioProcessor& processor;
     const int deckIndex;
     double shownSeconds = 0.0;
+    double shownBehind = 0.0;   // 0.12.0: on THE LIVE RECORD, how far behind the synth
+    void paintLive (juce::Graphics&, juce::Rectangle<float> area, juce::Rectangle<float> nameArea, const deck::Record&);   // 0.12.0
 };
 
 // THE CROSSFADER on the page (0.4.0): a DJ mixer's fader to drag (FADER), its open travel lit as much as the deck is heard

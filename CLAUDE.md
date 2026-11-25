@@ -28,6 +28,7 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 8. **Real scratches** (0.8.0, done): the library tuned to measurements of DJs; below.
 9. **The second deck** (0.9.0, done): below.
 10. **Distorted records** (0.11.0, done): THE NU RECORD and SAMPLE; below.
+11. **THE LIVE RECORD** (built, not released yet): a deck scratching what the synth just played; below.
 
 ## THE DECK (0.2.0)
 
@@ -179,6 +180,39 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   D2 and clipped crest; the squeal rising 1.9 -> 2.7 kHz; the zap; seven chugs dying away; the deck, project, preset,
   BUILT IN key), `[sample]` (armed waits and cancels; from the first sound; stop; on DECK B as a WAV in Records at 0.7,
   1 kHz; no host playing; 30 s full; the rack's key and screen).
+
+## THE LIVE RECORD (not released yet)
+
+- **The owner's ask** (after PR7-K 1.11.0's SCRATCH, which cuts up what was just played: "can we take the sounds we had
+  with scratch and add them to our playable instrument"; then "make the two clips and add the live record"). The two
+  clips compared PR7-T's deck as it is with SCRATCH's hand and mixer (PR7-K's `effects::Scratch`) on the same routine;
+  bringing that hand and mixer over waits on the owner's verdict.
+- **`deck::LiveTape`** (`source/dsp/deck/LiveTape.*`, our own design): the last 12 s (`seconds`; the ring rounds up to
+  a power of two) of the synth, stereo, written by `processChunk` after each engine piece **while any deck is on**:
+  the engine's mix plus every used insert bus's raw input, before the effects and **before any deck is added** (a deck
+  never scratches its own scratching; the deck's mixer, routing and the effects then shape it as a record's). Places
+  are the engine's sample clock (`write (..., at)`; a gap or a jump back restarts it without clearing). Its slower
+  copies (1/2, 1/4, 1/8 of the band) are made as it records by the same 127-tap half-band filter as `makeRecord`'s,
+  run as samples arrive, so the slowest is about 9 ms behind: `newest()` is how far a needle may read (about 17 ms
+  behind the newest sound), `oldest()` the far end. `read` is `Deck::read`'s interpolator on the ring (round the
+  ring's end the samples are copied out); tested equal to a record made from the same audio to 1e-5 at any speed.
+  Key presses (`addHit`, from the engine's touches: keys and arps, never a deck's keys) are where it lands. The page's
+  picture: 600 bins of peaks (`getBin`, newest last).
+- **DeckKernel.h**: the interpolator's kernel and the half-band filter, moved out of Deck.cpp unchanged so the tape
+  shares them (`readingFor`, `sum` are the tape's).
+- **On a deck**: `deck::liveRecord()` (a placeholder `Record` with `live` set, no levels, 12 s long for the page) is
+  the third built-in record: `liveRecordRef` "{record:live}", `useBuiltInRecord (2)`, BUILT IN steps HOUSE, NU, LIVE.
+  `Deck::setLiveTape` (the processor's, set in `prepareToPlay`). While it's on, the needle is held between the tape's
+  `oldest` and `newest` (`low` / `high` replace 0 and the length), and put on at the newest sound. **DROP n** lands on
+  the nth newest key press (at least 30 ms old), 4 ms before it (`liveDropPlace`); none: half a second back. **A
+  technique** pressed while no hand has the record and it isn't turning (|speed| < 0.05) first jumps to the newest
+  press far enough back for a full stroke (REACH + 30 ms) and no more than 3 s old, 4 ms before it, as SCRATCH parks
+  its needle (`liveScratchPlace`); none: that far back and a quarter second more. A record playing (a DROP, PLAY) is
+  scratched where it is, as a real one. `getLiveBehindSeconds` for the page.
+- **The page**: the strip on LIVE shows the tape's last 12 s scrolling, NOW at the right, the needle where it is
+  behind ("S BEHIND NOW"), no cue flags (`DeckStrip::paintLive`); the rack's screen "x S BEHIND THE SYNTH".
+  Snapshot: `PARAGON_SNAPSHOT_PAGE=deck PARAGON_SNAPSHOT_DECKLIVE=1` (a played phrase, a CHIRP on its newest note).
+- Tests: `tests/LiveRecordTests.cpp` (`[live]`).
 
 ## The project
 

@@ -395,7 +395,50 @@ DeckStrip::DeckStrip (ParagonX1AudioProcessor& p, int d) : processor (p), deckIn
 void DeckStrip::timerCallback()
 {
     shownSeconds = processor.getDeck (deckIndex).getPositionSeconds();
+    shownBehind = processor.getDeck (deckIndex).getLiveBehindSeconds();
     repaint();
+}
+
+void DeckStrip::paintLive (juce::Graphics& g, juce::Rectangle<float> area, juce::Rectangle<float> nameArea, const deck::Record& record)
+{
+    // 0.12.0: THE LIVE RECORD: the last 12 seconds the synth played, scrolling left, NOW at the right edge, the needle
+    // where it is behind it (dimmer to its left: what it's already past).
+    const auto& tape = processor.getLiveTape();
+    const auto mid = area.getCentreY();
+    const auto bins = deck::LiveTape::bins;
+    const auto w = area.getWidth() / (float) bins;
+    const auto through = (float) juce::jlimit (0.0, 1.0, 1.0 - shownBehind / deck::LiveTape::seconds);
+    for (int b = 0; b < bins; ++b)
+    {
+        const auto x = area.getX() + (float) b * w;
+        const auto h = juce::jmax (1.0f, tape.getBin (b) * area.getHeight() * 0.48f);
+        const auto colour = tron::at ((float) b / (float) bins);
+        g.setColour (x < area.getX() + through * area.getWidth() ? colour.withAlpha (0.28f) : colour.withAlpha (0.95f));
+        g.fillRect (juce::Rectangle<float> (x, mid - h, juce::jmax (1.0f, w), 2.0f * h));
+    }
+    g.setColour (juce::Colour (0xff070507).withAlpha (0.8f));
+    g.fillRect (nameArea.withWidth (juce::jmin (nameArea.getWidth(), 12.0f + 6.5f * 16.0f)));
+    g.setColour (tron::pink.brighter (0.2f));
+    g.drawText (ParamIDs::deckNames[deckIndex] + "  " + record.name.toUpperCase() + "  (THE SYNTH)", nameArea, juce::Justification::centredLeft, true);
+    const auto x = area.getX() + through * area.getWidth();
+    {
+        juce::Path needle;
+        needle.startNewSubPath (x, area.getY() - 2.0f);
+        needle.lineTo (x, area.getBottom() + 2.0f);
+        const auto colour = tron::at (through);
+        for (const auto& [width, alpha] : { std::pair { 9.0f, 0.08f }, std::pair { 5.0f, 0.18f }, std::pair { 2.4f, 1.0f } })
+        {
+            g.setColour (colour.withAlpha (alpha));
+            g.strokePath (needle, juce::PathStrokeType (width));
+        }
+        g.setColour (juce::Colour (0xfffff0f2));
+        g.strokePath (needle, juce::PathStrokeType (0.9f));
+    }
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    const auto labels = juce::Rectangle<float> (area.getX(), area.getY() - 18.0f, area.getWidth(), 18.0f);
+    g.drawText (juce::String (shownBehind, 2) + " S BEHIND NOW", labels.withTrimmedLeft (labels.getWidth() - 180.0f),
+                juce::Justification::centredRight, false);
 }
 
 void DeckStrip::paint (juce::Graphics& g)
@@ -419,6 +462,12 @@ void DeckStrip::paint (juce::Graphics& g)
     const auto nameArea = juce::Rectangle<float> (area.getX(), area.getBottom() - 6.0f, juce::jmin (260.0f, area.getWidth() * 0.6f), 16.0f);
     if (record == nullptr || record->length <= 0)
         return;
+
+    if (record->live)
+    {
+        paintLive (g, area, nameArea, *record);
+        return;
+    }
 
     // The sound, as a bar a slice (its loudest), dimmer behind the needle.
     const auto mid = area.getCentreY();
@@ -722,7 +771,9 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     houseKey.setComponentID ("deckHouse");
     houseKey.setTooltip ("A built-in record on the deck the rack shows (our own, synthesized), each press the next: THE HOUSE RECORD "
                          "(an \"ahh\", a horn stab, a drum break, a 1 kHz tone) and THE NU RECORD (a distorted shouted \"AAH!\", a "
-                         "drop-D power-chord stab, a feedback squeal and laser zap, palm-muted chugs). Each sound sits at a cue.");
+                         "drop-D power-chord stab, a feedback squeal and laser zap, palm-muted chugs), each sound at a cue; and THE LIVE "
+                         "RECORD: what the synth just played (the last 12 seconds), to scratch with nothing loaded. On it the scratch "
+                         "keys land on the newest note played, DROP 1 on the newest note, DROP 2 the one before, and so on.");
     sampleKey.setComponentID ("deckSample");
     sampleKey.setTooltip ("SAMPLE: records what PR7-T is playing (the synth, DRIVE and every effect) onto the deck the rack shows, to "
                           "scratch. Press it, play: it starts at the first sound. Press again to stop (30 s at most). Saved as a WAV in "
@@ -753,7 +804,8 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     houseKey.onClick = [this]
     {
         // 0.11.0: each press the next built-in record (a file on the deck: the first).
-        processor.useBuiltInRecord (processor.getBuiltInRecord (selected) == 0 ? 1 : 0, selected);
+        // 0.12.0: THE HOUSE RECORD, THE NU RECORD, THE LIVE RECORD, round again.
+        processor.useBuiltInRecord ((juce::jmax (-1, processor.getBuiltInRecord (selected)) + 1) % 3, selected);
         processor.deckRecordChangedByUser();
         timerCallback();
     };
@@ -946,7 +998,8 @@ void DeckPage::timerCallback()
     screen.state = ! on ? juce::String ("OFF")
                  : deck.getScratch() >= 0 ? deck::scratchNames[deck.getScratch()]   // 0.5.0: the technique playing
                  : std::abs (speed) < 0.0005f ? juce::String ("STOPPED") : speed < 0.0f ? juce::String ("BACKWARDS") : juce::String ("PLAYING");
-    screen.line1 = record != nullptr ? juce::String (deck.getPositionSeconds(), 1) + " / " + juce::String (record->seconds(), 1) + " S" : juce::String();
+    screen.line1 = record != nullptr && record->live ? juce::String (deck.getLiveBehindSeconds(), 1) + " S BEHIND THE SYNTH"
+                 : record != nullptr ? juce::String (deck.getPositionSeconds(), 1) + " / " + juce::String (record->seconds(), 1) + " S" : juce::String();
     screen.problem = problem.isNotEmpty();
     screen.line2 = screen.problem ? problem + ": THE HOUSE RECORD MEANWHILE"
                                   : "KEYS FROM " + noteName (settings.firstKey) + (hand ? "  -  PITCH WHEEL: THE HAND" : "  -  HAND: DECK " + ParamIDs::deckNames[1 - selected]);
