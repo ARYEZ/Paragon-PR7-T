@@ -245,6 +245,11 @@ public:
     juce::MidiFile arpToMidi (int arp, juce::Array<int> keys = {}) const;
     bool exportArpMidi (int arp, const juce::File&) const;
     juce::File arpMidiDragFile (int arp) const;   // a file to drag onto a track
+    // 0.12.1: the loaded NU SCHOOL preset's demo routine as MIDI (rigs/ScratchDemos): its name ("" none), saved to a
+    // file, or a file in the temp folder to drag onto a track.
+    juce::String getDemoMidiPreset() const;
+    bool exportDemoMidi (const juce::File&) const;
+    juce::File demoMidiDragFile() const;
     bool importMidiLinks (const juce::File&);
     void controllerForTest (int controller, float value);   // a controller, played through a short block
     // Tests: the synth's random choices (start phases...) the same on every run, for sample-for-sample comparisons.

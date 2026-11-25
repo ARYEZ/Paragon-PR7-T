@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "rigs/ScratchDemos.h"
 
 #include <cstring>
 #include "dsp/synth/Mimic.h"
@@ -3250,6 +3251,35 @@ bool ParagonX1AudioProcessor::exportArpMidi (int arp, const juce::File& file) co
     out.setPosition (0);
     out.truncate();
     return arpToMidi (arp).writeTo (out);
+}
+
+juce::String ParagonX1AudioProcessor::getDemoMidiPreset() const
+{
+    const auto name = currentRig.factoryName;
+    return name.isNotEmpty() && ! scratchdemos::forPreset (name).empty() ? name : juce::String();
+}
+
+bool ParagonX1AudioProcessor::exportDemoMidi (const juce::File& file) const
+{
+    const auto name = getDemoMidiPreset();
+    if (name.isEmpty())
+        return false;
+    file.getParentDirectory().createDirectory();
+    juce::FileOutputStream out (file);
+    if (! out.openedOk())
+        return false;
+    out.setPosition (0);
+    out.truncate();
+    // At the song's tempo when there is one (only the file's own tempo mark: the notes are in beats either way).
+    return scratchdemos::toMidiFile (name, scratchdemos::forPreset (name), juce::jmax (20.0, hostBpm.load())).writeTo (out);
+}
+
+juce::File ParagonX1AudioProcessor::demoMidiDragFile() const
+{
+    auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                    .getChildFile ("Paragon PR7-T").getChildFile (getDemoMidiPreset() + " (demo).mid");
+    exportDemoMidi (file);
+    return file;
 }
 
 juce::File ParagonX1AudioProcessor::arpMidiDragFile (int arp) const

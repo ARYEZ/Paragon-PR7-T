@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "ui/SynthControls.h"
 #include "ui/DeckRack.h"
+#include "ui/ArpPage.h"
 
 // THE DECK's page (PR7-T 0.2.0): the turntable. 0.4.0: its controls on a rack unit across the top (DeckRack, PR7-I's),
 // the crossfader under the strip. 0.9.0: two turntables, DECK A left and DECK B right, the mixer between them (the
@@ -108,6 +109,7 @@ public:
     void selectDeck (int);
     DeckRack& getRack() noexcept { return rack; }
     DeckCrossfader& getCrossfader() noexcept { return crossfader; }
+    MidiExportButton& getDemoButton() noexcept { return demoButton; }
     // HIDE RACK / SHOW RACK (0.4.0, as PR7-I 0.6.3's): the rack hidden, the turntable gets the page's height.
     bool isRackShown() const noexcept { return rackShown; }
     void setRackShown (bool);
@@ -141,6 +143,9 @@ private:
     struct KeyButton { deck::Key key; std::unique_ptr<juce::TextButton> button; };
     std::vector<KeyButton> keys;
     juce::TextButton rackButton;
+    // 0.12.1: DEMO MIDI, shown while a NU SCHOOL preset is loaded: drag it onto a track for the routine its demo
+    // played, or click to save it.
+    MidiExportButton demoButton { processor };
     bool rackShown = true;
     juce::Rectangle<int> mixerPlinth;   // 0.9.1: the mixer's body between the turntables (painted, Tron)
     juce::Label speedLabel, speedLabelB, keysLabel;

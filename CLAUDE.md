@@ -252,6 +252,7 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   CART, DIRT, LEVEL (+4 dB, some evened to -15 to -17 loudness on their routine), the mixer and FX for the style; the
   synth's own keys a quiet saw (osc 1 at 0.3). Live Synth Cuts: three saws through a tube shaper, the LIMITER at -1 dBFS.
   Our own settings, no band or song named.
+- **DEMO MIDI** (0.12.1, the owner's ask: "add the midi file drag out option", to see how Flare Cutter's demo was played): `rigs/ScratchDemos.*` (`scratchdemos::forPreset`: each NU SCHOOL preset's routine in beats, the same notes the tests and clips play; `toMidiFile`, 960 ticks a beat, the tempo given). The processor's `getDemoMidiPreset` (the loaded factory preset's name when it has a demo), `exportDemoMidi`, `demoMidiDragFile` (the temp folder's "Paragon PR7-T/<name> (demo).mid", at the host's tempo). The deck page's `MidiExportButton` (ArpPage's: click saves, drag out) beside HIDE RACK, shown only while a demo exists.
 - Tests: `tests/ScratchStyleTests.cpp` (`[nuschool]`: each routine sounds, no NaN, under 0 dBFS; `[.scratchrender]`
   writes a clip of each, `PARAGON_RENDER` the folder).
 

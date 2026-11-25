@@ -877,6 +877,15 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     rackButton.setTooltip ("Hides the rack (the turntables get the page's height) or shows it again.");
     rackButton.onClick = [this] { setRackShown (! rackShown); };
     addAndMakeVisible (rackButton);
+    // 0.12.1: the NU SCHOOL preset's demo routine, to drag onto a track (or click to save).
+    styleButton (demoButton);
+    demoButton.setButtonText ("DEMO MIDI");
+    demoButton.setComponentID ("deckDemoMidi");
+    demoButton.setTooltip ("Drag onto a track in your song: the notes this NU SCHOOL preset's demo played (the deck's keys, the "
+                           "scratch keys, any mod wheel), two bars to see how the style is played. Or click to save it as a file.");
+    demoButton.makeDragFile = [this] { return processor.demoMidiDragFile(); };
+    demoButton.exportTo = [this] (const juce::File& f) { return processor.exportDemoMidi (f); };
+    addChildComponent (demoButton);
 
     for (auto* label : { &speedLabel, &speedLabelB, &keysLabel })
     {
@@ -982,6 +991,12 @@ void DeckPage::timerCallback()
     const auto on = isOn (selected);
     for (auto& k : keys)
         k.button->setEnabled (on);   // off, the keys would play the synth
+    // DEMO MIDI (0.12.1): only with a NU SCHOOL preset loaded; the file named after it.
+    {
+        const auto demo = processor.getDemoMidiPreset();
+        demoButton.fileName = demo + " (demo)";
+        demoButton.setVisible (demo.isNotEmpty());
+    }
 
     // Under each turntable: how it's turning.
     for (int d = 0; d < ParamIDs::numDecks; ++d)
@@ -1237,6 +1252,7 @@ void DeckPage::resized()
     // Between them: HIDE / SHOW RACK, the records' strips, the shown deck's keys, the legend, the crossfader.
     auto top = area.removeFromTop (28);
     rackButton.setBounds ((rackShown ? top : juce::Rectangle<int> (getWidth() - 150, 12, 130, 28)).removeFromRight (130));
+    demoButton.setBounds (rackButton.getBounds().translated (-140, 0));
     area.removeFromTop (34);   // (0.9.1: room for the mixer's top edge and its name over the strips)
     const auto keysHeight = 2 * 34 + 6;
     const auto faderHeight = juce::jmin (76, area.getHeight() / 6);
