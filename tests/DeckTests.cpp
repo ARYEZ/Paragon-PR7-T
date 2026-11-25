@@ -1306,6 +1306,7 @@ namespace
         p.set (ParamIDs::deckOn, 1.0f);
         p.set (ParamIDs::deckStart, 0.05f);
         p.set (ParamIDs::deckNeedle, 0.0f);
+        p.set (ParamIDs::deckFeel, 0.0f);   // 0.12.0: FEEL's drive off, so the tone is clean unless the test drives it
         if (setUp)
             setUp (p);
         return p.play (seconds, noteOn (24 + (int) deck::Key::drop4));
