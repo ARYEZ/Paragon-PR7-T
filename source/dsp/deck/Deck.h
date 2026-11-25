@@ -132,6 +132,9 @@ namespace deck
         // THE SOUND (0.6.0, stage 6): the cartridge and the mixer channel (DeckMixer), and the record's WEAR.
         MixerSettings mixer;
         float wear = 0.0f;               // 0 to 1: surface hiss and crackle that move with the record, a warp's wobble
+        // FEEL and DIRT (0.12.0, from PR7-K's SCRATCH): see Deck.cpp. Off here (the parameter's default is on).
+        bool feel = false;
+        float dirt = 0.0f;               // 0 to 1: how hard FEEL's mixer drive is pushed
 
         float baseSpeed() const noexcept { return (1.0f + pitch) * (speed45 ? 1.35f : 1.0f); }
     };
@@ -172,7 +175,7 @@ namespace deck
         float takePeak() noexcept { return peak.exchange (0.0f, std::memory_order_relaxed); }
 
         // For tests: the needle's random crackle the same each run.
-        void seedRandom (std::int64_t seed) noexcept { random.setSeed (seed); wearRandom.setSeed (seed + 1); }
+        void seedRandom (std::int64_t seed) noexcept { random.setSeed (seed); wearRandom.setSeed (seed + 1); handRandom.setSeed (seed + 2); }
 
         // Reads `record`'s side `channel` at `position` (in the sample's own samples) as it sounds moving at
         // `rate` samples of it per output sample (its magnitude: the interpolator's cutoff follows it).
@@ -233,6 +236,30 @@ namespace deck
         // THE SOUND (0.6.0): the mixer channel, and WEAR's surface noise (its hiss a side, a crackle dying away).
         DeckMixer mixer;
         juce::Random wearRandom { 11 };
+
+        // FEEL and DIRT (0.12.0, PR7-K's SCRATCH): the hand's lateness (samples still to wait) before a technique
+        // starts, its randomness, how far FEEL is faded in (0 to 1 over 10 ms: at 0 the deck is exactly as before), and
+        // the mixer's drive a side: the low cut, the DC blocker, the bite, the top; the hand's hiss, and the level under
+        // the needle it follows.
+        struct Biquad
+        {
+            double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0, z1 = 0.0, z2 = 0.0;
+            float run (float x) noexcept
+            {
+                const auto y = b0 * x + z1;
+                z1 = b1 * x - a1 * y + z2;
+                z2 = b2 * x - a2 * y;
+                return (float) y;
+            }
+            void clear() noexcept { z1 = z2 = 0.0; }
+        };
+        juce::Random handRandom { 13 };
+        int scratchDelay = 0;
+        float feelMix = 0.0f;
+        float dirtWas = -1.0f;
+        std::array<Biquad, 2> driveLowCut, driveBite, driveTop, hissLow, hissHigh;
+        std::array<float, 2> dcIn {}, dcOut {}, heard {};
+        void prepareDrive (float dirt) noexcept;
         double hissL = 0.0, hissR = 0.0;
         float crackleNow = 0.0f;
 

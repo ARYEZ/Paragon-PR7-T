@@ -430,6 +430,58 @@ namespace deck
         return record;
     }
 
+    namespace
+    {
+        // FEEL (0.12.0): a hand's stroke from PR7-K's SCRATCH: quick through the middle (`snap` of it a straight line),
+        // where the library's strokes are a plain half cosine.
+        double eased (double u, double snap) noexcept
+        {
+            u = juce::jlimit (0.0, 1.0, u);
+            return (1.0 - snap) * (1.0 - std::cos (juce::MathConstants<double>::pi * u)) * 0.5 + snap * u;
+        }
+
+        // RBJ biquads (in double, as the mixer's).
+        void lowPassFilter (double hz, double q, double rate, double& b0, double& b1, double& b2, double& a1, double& a2) noexcept
+        {
+            const auto w0 = juce::MathConstants<double>::twoPi * juce::jmin (hz, 0.45 * rate) / rate;
+            const auto alpha = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + alpha;
+            b0 = (1.0 - c) * 0.5 / a0; b1 = (1.0 - c) / a0; b2 = b0; a1 = -2.0 * c / a0; a2 = (1.0 - alpha) / a0;
+        }
+        void highPassFilter (double hz, double q, double rate, double& b0, double& b1, double& b2, double& a1, double& a2) noexcept
+        {
+            const auto w0 = juce::MathConstants<double>::twoPi * juce::jmin (hz, 0.45 * rate) / rate;
+            const auto alpha = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + alpha;
+            b0 = (1.0 + c) * 0.5 / a0; b1 = -(1.0 + c) / a0; b2 = b0; a1 = -2.0 * c / a0; a2 = (1.0 - alpha) / a0;
+        }
+        void peakFilter (double hz, double q, double db, double rate, double& b0, double& b1, double& b2, double& a1, double& a2) noexcept
+        {
+            const auto w0 = juce::MathConstants<double>::twoPi * juce::jmin (hz, 0.45 * rate) / rate;
+            const auto A = std::pow (10.0, db / 40.0), alpha = std::sin (w0) / (2.0 * q), c = std::cos (w0);
+            const auto a0 = 1.0 + alpha / A;
+            b0 = (1.0 + alpha * A) / a0; b1 = -2.0 * c / a0; b2 = (1.0 - alpha * A) / a0; a1 = b1; a2 = (1.0 - alpha / A) / a0;
+        }
+    }
+
+    void Deck::prepareDrive (float dirt) noexcept
+    {
+        // SCRATCH's mixer: a 150 Hz cut before the drive; a bite at 1.8 kHz (+5 dB, +9 at full DIRT) and a 9 kHz top
+        // after it; the hand's hiss between 1.2 and 5 kHz. Remade only when DIRT moves (the bite follows it).
+        for (int c = 0; c < 2; ++c)
+        {
+            auto& cut = driveLowCut[(size_t) c];
+            highPassFilter (150.0, 0.7071, hostRate, cut.b0, cut.b1, cut.b2, cut.a1, cut.a2);
+            auto& bite = driveBite[(size_t) c];
+            peakFilter (1800.0, 1.0, 5.0 + 4.0 * dirt, hostRate, bite.b0, bite.b1, bite.b2, bite.a1, bite.a2);
+            auto& top = driveTop[(size_t) c];
+            lowPassFilter (9000.0, 0.7071, hostRate, top.b0, top.b1, top.b2, top.a1, top.a2);
+            auto& low = hissLow[(size_t) c];
+            highPassFilter (1200.0, 0.7071, hostRate, low.b0, low.b1, low.b2, low.a1, low.a2);
+            auto& high = hissHigh[(size_t) c];
+            lowPassFilter (5000.0, 0.7071, hostRate, high.b0, high.b1, high.b2, high.a1, high.a2);
+        }
+        dirtWas = dirt;
+    }
+
     std::shared_ptr<const Record> liveRecord()
     {
         static const std::shared_ptr<const Record> record = []
@@ -513,6 +565,7 @@ namespace deck
         fadeLength = juce::jmax (1, (int) (0.004 * hostRate));
         gain.reset (hostRate, 0.03);
         mixer.prepare (hostRate);
+        dirtWas = -1.0f;   // FEEL's filters remade for this rate
         reset();
     }
 
@@ -527,6 +580,12 @@ namespace deck
         shownFader = 1.0f;
         mixer.reset();
         hissL = hissR = 0.0;
+        scratchDelay = 0;
+        feelMix = 0.0f;
+        for (auto* filters : { &driveLowCut, &driveBite, &driveTop, &hissLow, &hissHigh })
+            for (auto& f : *filters)
+                f.clear();
+        dcIn = dcOut = heard = {};
         crackleNow = 0.0f;
         hand = Hand::none;
         wheel = 0.0f;
@@ -659,6 +718,13 @@ namespace deck
                 scratchSettling = 0;
                 scratchOpen = true;
                 scratchStroke = (double) settings.scratchReach * (0.4 + 0.6 * (double) message.getFloatVelocity());
+                scratchDelay = 0;
+                if (settings.feel)
+                {
+                    // FEEL: a hand, not a machine: up to 5 ms late, each stroke 15% longer or shorter at random.
+                    scratchDelay = (int) (handRandom.nextFloat() * 0.005f * (float) hostRate);
+                    scratchStroke *= 0.85 + 0.3 * (double) handRandom.nextFloat();
+                }
             }
             else if (message.isNoteOff() && technique == scratchTechnique)
                 scratchHeld = false;   // it finishes the stroke it's on
@@ -758,6 +824,31 @@ namespace deck
         const auto wear = juce::jlimit (0.0f, 1.0f, settings.wear);
         const auto crackleFall = (float) std::exp (-1.0 / (0.0003 * hostRate));   // a crackle: 0.3 ms
         mixer.set (settings.mixer);
+        // FEEL and DIRT (0.12.0): SCRATCH's drive, fixed for the block.
+        const auto dirt = juce::jlimit (0.0f, 1.0f, settings.dirt);
+        if (std::abs (dirt - dirtWas) > 1.0e-4f)
+            prepareDrive (dirt);
+        const auto feelStep = (float) (1.0 / (0.01 * hostRate));
+        if (settings.feel && feelMix <= 0.0f)
+        {
+            // Fading in from fully out: from silence, not from what was left when it last faded out.
+            for (auto* filters : { &driveLowCut, &driveBite, &driveTop, &hissLow, &hissHigh })
+                for (auto& f : *filters)
+                    f.clear();
+            dcIn = dcOut = heard = {};
+        }
+        const auto drive = 4.5f * std::pow (4.0f, dirt);
+        const auto bias = 0.25f + 0.25f * dirt;
+        const auto fuzz = 1.0f + 3.0f * juce::jmax (0.0f, 2.0f * dirt - 1.0f);
+        const auto fuzzNorm = 1.0f / std::tanh (fuzz);
+        const auto biasOffset = std::tanh (bias);
+        const auto dcPole = (float) std::exp (-juce::MathConstants<double>::twoPi * 10.0 / hostRate);
+        const auto heardFollow = (float) (1.0 - std::exp (-1.0 / (0.005 * hostRate)));
+        constexpr float driveReference = 0.2f;   // a record's usual level (the built-in records' parts, about 0.2 rms)
+        // The drive's output on a held tone at that level, by DIRT (measured: 0.79 at 0, 1.11 at 1, the harder drive
+        // squaring it off), so FEEL comes back about as loud as the record whatever DIRT. (SCRATCH matched the level it
+        // heard instead; a deck knows its record.)
+        const auto driveOutput = 0.79f * std::pow (1.401f, dirt);
         const auto scratchSettle = (int) (0.03 * hostRate);
         // The key blocks moved (KEYS or SCRATCH KEYS changed): the held keys' note-offs will go elsewhere, so let go.
         if (settings.firstKey != keysWere || settings.firstScratchKey != scratchKeysWere)
@@ -813,8 +904,19 @@ namespace deck
                     // RATE); at its end again while its key's held, else the hand lets go and the motor takes it on.
                     const auto length = scratchBeats (scratchTechnique);
                     const auto shape = scratchAt (scratchTechnique, scratchPhase / length);
-                    turns = shape.hand * scratchStroke;
+                    auto stroke = shape.hand;
+                    if (settings.feel && stroke > 0.0 && stroke < 1.0)
+                        stroke = eased (std::acos (1.0 - 2.0 * stroke) / juce::MathConstants<double>::pi, 0.45);   // FEEL: SCRATCH's hand
+                    turns = stroke * scratchStroke;
                     scratchOpen = shape.open;
+                    if (scratchDelay > 0)
+                    {
+                        // FEEL: the hand a moment late: the record held where it was taken, the fader open.
+                        --scratchDelay;
+                        turns = 0.0;
+                        scratchOpen = true;
+                    }
+                    else
                     scratchPhase += beatsPerSample * scratchRates[juce::jlimit (0, (int) std::size (scratchRates) - 1, settings.scratchRate)];
                     if (scratchPhase >= length)
                     {
@@ -875,7 +977,17 @@ namespace deck
             }
 
             const auto rate = speed * ratio;
-            const auto loudness = (float) juce::jlimit (-2.0, 2.0, speed / juce::jmax (0.01, base));   // the cartridge: level with speed
+            auto loudness = (float) juce::jlimit (-2.0, 2.0, speed / juce::jmax (0.01, base));   // the cartridge: level with speed
+            // FEEL (0.12.0): FEEL's fades in and out over 10 ms (at 0 everything below is exactly as before).
+            feelMix = settings.feel ? juce::jmin (1.0f, feelMix + feelStep) : juce::jmax (0.0f, feelMix - feelStep);
+            if (feelMix > 0.0f)
+            {
+                // SCRATCH's cartridge: the sound fading as the hand slows (from 0.6 of normal speed down), never above
+                // the record's own level.
+                const auto pace = std::abs (speed) / juce::jmax (0.01, base);
+                const auto soft = (float) std::pow (juce::jmin (1.0, pace / 0.6), 0.6) * (speed < 0.0 ? -1.0f : 1.0f);
+                loudness += feelMix * (soft - loudness);
+            }
             const auto level = gain.getNextValue();
             float outL = 0.0f, outR = 0.0f;
             if (record != nullptr && length > low && std::abs (loudness) > 1.0e-6f)
@@ -954,6 +1066,35 @@ namespace deck
             outL *= level;
             outR *= level;
             mixer.process (outL, outR);
+            if (feelMix > 0.0f)
+            {
+                // FEEL's mixer, pushed into the red (PR7-K's SCRATCH at DIRT 0, harder with DIRT): a low cut, a lopsided
+                // tanh driven from a record's usual level (`driveReference`, so it's the same whatever LEVEL), a second
+                // fuzz past half DIRT, a DC blocker, the bite and the top, back to about the level it came in at; then the
+                // hand's hiss, only while there's sound under the needle. The crossfader comes after, so a cut is silence.
+                float* sides[2] = { &outL, &outR };
+                const auto hiss = (float) (0.0069 * juce::jmin (4.0, std::abs (speed)));
+                for (int c = 0; c < 2; ++c)
+                {
+                    auto& v = *sides[c];
+                    const auto dry = v;
+                    // LEVEL taken out before the drive and put back after it: the drive is set for the record's own
+                    // level, and LEVEL stays the channel's level (in front of a saturating drive it would do nothing).
+                    const auto unlevelled = level > 1.0e-4f ? v / level : 0.0f;
+                    heard[(size_t) c] += (std::abs (unlevelled) - heard[(size_t) c]) * heardFollow;
+                    auto w = driveLowCut[(size_t) c].run (unlevelled);
+                    w = std::tanh (w / (3.0f * driveReference) * drive + bias) - biasOffset;
+                    if (fuzz > 1.0f)
+                        w = std::tanh (w * fuzz) * fuzzNorm;
+                    dcOut[(size_t) c] = w - dcIn[(size_t) c] + dcPole * dcOut[(size_t) c];
+                    dcIn[(size_t) c] = w;
+                    w = driveTop[(size_t) c].run (driveBite[(size_t) c].run (dcOut[(size_t) c]));
+                    w += hissHigh[(size_t) c].run (hissLow[(size_t) c].run (handRandom.nextFloat() * 2.0f - 1.0f)) * hiss
+                       * juce::jmin (1.0f, heard[(size_t) c] / (0.05f * driveReference));
+                    w *= driveReference / driveOutput * level;
+                    v = dry + feelMix * (w - dry);
+                }
+            }
             const auto heardL = outL * faderNow, heardR = outR * faderNow;
             left[i] += heardL;
             if (right != nullptr)

@@ -152,6 +152,11 @@ std::optional<Rig> Rig::fromXml (const juce::XmlElement& xml)
     // from before DECK B (no deckBOn in it) has its fader turned round, so deck A sounds as it did.
     if (const auto fader = rig.parameters.find (ParamIDs::deckFader); fader != rig.parameters.end() && ! rig.parameters.contains (ParamIDs::deckIds[1].on))
         fader->second = 1.0f - fader->second;
+    // PR7-T 0.12.0: FEEL (on by default) is off for a preset saved before it that holds the decks' settings, so its
+    // scratches sound as they did.
+    if (rig.parameters.contains (ParamIDs::deckOn) && ! rig.parameters.contains (ParamIDs::deckFeel))
+        for (const auto& ids : ParamIDs::deckIds)
+            rig.parameters[ids.feel] = 0.0f;
     for (const auto* element : xml.getChildWithTagNameIterator (spectrumTag))
     {
         const auto oscillator = element->getIntAttribute ("osc") - 1;

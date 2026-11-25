@@ -557,6 +557,12 @@ namespace ParamIDs
     inline constexpr auto deckSendDelay  = "deckSendDelay";    // 0 to 1: into DELAY's send (while DELAY's on)
     inline constexpr auto deckSendReverb = "deckSendReverb";   // 0 to 1: into REVERB's send (while REVERB's on)
     inline constexpr auto deckInsert     = "deckInsert";       // choice: insertBusNames (None, A-D)
+    // FEEL and DIRT (0.12.0, version hint 50): PR7-K's SCRATCH brought to the deck (the owner chose it after an A/B):
+    // FEEL a hand that's human (eased strokes, a few ms late and 15% longer or shorter at random, the hiss of the hand)
+    // and the cartridge fading as the record slows; the mixer's channel pushed into the red (DIRT 0: SCRATCH's drive,
+    // 1 four times harder with a second fuzz). On by default; projects and presets from before 0.12.0 load with it off.
+    inline constexpr auto deckFeel = "deckFeel";
+    inline constexpr auto deckDirt = "deckDirt";   // 0 to 1
     // THE SECOND DECK (0.9.0, version hint 49): DECK B, a whole second turntable and mixer channel, its IDs deck A's with
     // "deckB" for "deck" ("deckBPitch"...). Shared by the two (the mixer's): the crossfader (deckFader, deckCurve,
     // deckHamster, deckTransform), MOD HAND, and HAND (which deck the pitch and mod wheels move). 0.9.0: deckFader is
@@ -571,16 +577,18 @@ namespace ParamIDs
         const char* eq[3];
         const char* kill[3];
         const char *filter, *filterRes, *wear, *sendDelay, *sendReverb, *insert;
+        const char *feel, *dirt;   // 0.12.0
     };
     inline constexpr DeckIds deckIds[numDecks] {
         { deckOn, deckKeys, deckPitch, deckSpeed, deckStart, deckBrake, deckSpin, deckSpinTime, deckReach, deckNeedle, deckLevel,
           { deckCues[0], deckCues[1], deckCues[2], deckCues[3] }, deckScratchKeys, deckScratchReach, deckScratchRate, deckCart,
           { deckEq[0], deckEq[1], deckEq[2] }, { deckKill[0], deckKill[1], deckKill[2] }, deckFilter, deckFilterRes, deckWear,
-          deckSendDelay, deckSendReverb, deckInsert },
+          deckSendDelay, deckSendReverb, deckInsert, deckFeel, deckDirt },
         { "deckBOn", "deckBKeys", "deckBPitch", "deckBSpeed", "deckBStart", "deckBBrake", "deckBSpin", "deckBSpinTime", "deckBReach",
           "deckBNeedle", "deckBLevel", { "deckBCue1", "deckBCue2", "deckBCue3", "deckBCue4" }, "deckBScratchKeys", "deckBScratchReach",
           "deckBScratchRate", "deckBCart", { "deckBEqLow", "deckBEqMid", "deckBEqHigh" }, { "deckBKillLow", "deckBKillMid", "deckBKillHigh" },
-          "deckBFilter", "deckBFilterRes", "deckBWear", "deckBSendDelay", "deckBSendReverb", "deckBInsert" }
+          "deckBFilter", "deckBFilterRes", "deckBWear", "deckBSendDelay", "deckBSendReverb", "deckBInsert",
+          "deckBFeel", "deckBDirt" }
     };
     inline constexpr int deckBKeysDefault = 3;          // C3 (note 48): above deck A's two octaves
     inline constexpr int deckBScratchKeysDefault = 5;   // C4 (note 60)

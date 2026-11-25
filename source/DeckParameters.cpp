@@ -104,6 +104,11 @@ namespace
         addFloat (ids.sendDelay, "Send Delay", { 0.0f, 1.0f, 0.01f }, 0.0f, asPercent, 48);
         addFloat (ids.sendReverb, "Send Reverb", { 0.0f, 1.0f, 0.01f }, 0.0f, asPercent, 48);
         layout.add (std::make_unique<juce::AudioParameterChoice> (pid (ids.insert, 48), name + "Insert", ParamIDs::insertBusNames, 0));
+        // FEEL and DIRT (0.12.0): their own hint, 50 (DECK B's too). FEEL on by default (older states turn it off); the
+        // engine's own default is off (deck::Settings), so a bare deck, and its tests, are as before.
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ids.feel, 50 }, name + "Feel", true));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { ids.dirt, 50 }, name + "Dirt",
+            Range { 0.0f, 1.0f, 0.01f }, d.dirt, withText (asPercent)));
         for (int cue = 0; cue < 4; ++cue)
             addFloat (ids.cues[cue], "Cue " + juce::String (cue + 1), { 0.0f, 1.0f, 0.001f }, d.cues[(size_t) cue],
                       [] (float x, int) { return juce::String (x * 100.0f, 1) + "%"; }, 44);

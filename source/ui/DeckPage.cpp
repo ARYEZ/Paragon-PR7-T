@@ -670,6 +670,13 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
                                                                          "(a turn: 1.8 seconds of the record). A softer key: down to 40% of it.");
         make (set.scratchControls, ids.scratchRate, "RATE", deckName + "the techniques at half, normal or double speed (each takes a set number "
                                                                        "of beats at the song's tempo: BABY half a beat, TRANSFORMER two).", true);
+        // FEEL and DIRT (0.12.0): PR7-K's SCRATCH brought to the deck.
+        make (set.scratchControls, ids.feel, "FEEL", deckName + "a human hand and a hot mixer, from PR7-K's SCRATCH: the techniques' strokes quick "
+                                                     "through the middle, each a few ms late and a little longer or shorter; the sound fading "
+                                                     "as the record slows; the hand's hiss; the mixer's channel driven hard (before the "
+                                                     "crossfader, so a cut is silence). Off: the deck exactly as before 0.12.0.");
+        make (set.scratchControls, ids.dirt, "DIRT", deckName + "with FEEL on, how hard the mixer is pushed: 0 SCRATCH's own drive, up to four "
+                                                     "times harder with a second fuzz and more bite.");
         set.scratchKeysMenu = std::make_unique<ParamControl> (state, ids.scratchKeys, "SCRATCH KEYS",
                                                               deckName + "the octave its scratch library's 12 keys start on (a technique a key), or OFF.");
         set.scratchKeysMenu->setCompact (true);
@@ -1163,9 +1170,12 @@ void DeckPage::resized()
         // The rack's controls in the places it gives (both decks' in the same places: the one shown is visible).
         for (auto& set : sets)
         {
-            for (auto* list : { &set.deckControls, &set.cueControls, &set.scratchControls, &set.routingControls })
+            for (auto* list : { &set.deckControls, &set.cueControls, &set.routingControls })
                 for (int i = 0; i < (int) list->size(); ++i)
                     (*list)[(size_t) i]->setBounds (rack.knobCell (i));
+            // SCRATCH: REACH and RATE, the mixer's MOD HAND and HAND (below), then FEEL and DIRT (0.12.0).
+            for (int i = 0; i < (int) set.scratchControls.size(); ++i)
+                set.scratchControls[(size_t) i]->setBounds (rack.knobCell (i < 2 ? i : i + 2));
             // MIXER: CART, LOW, MID, HIGH, the KILLs stacked beside them, FILTER, RES, WEAR.
             for (int i = 0; i < (int) set.mixerControls.size(); ++i)
                 set.mixerControls[(size_t) i]->setBounds (rack.knobCell (i < 4 ? i : i + 1));

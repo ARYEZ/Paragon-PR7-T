@@ -1431,6 +1431,8 @@ deck::Settings ParagonX1AudioProcessor::getDeckSettings (int d) const noexcept
     s.mixer.filter = param (ids.filter);
     s.mixer.resonance = param (ids.filterRes);
     s.wear = param (ids.wear);
+    s.feel = isOn (ids.feel);
+    s.dirt = param (ids.dirt);
     return s;
 }
 
@@ -3066,6 +3068,15 @@ void ParagonX1AudioProcessor::setStateInformation (const void* data, int sizeInB
     // one deck's fader with 1 its open end: turned round, deck A sounds as it did.
     if (auto fader = state.getChildWithProperty ("id", ParamIDs::deckFader); fader.isValid() && ! state.getChildWithProperty ("id", ParamIDs::deckIds[1].on).isValid())
         fader.setProperty ("value", 1.0 - (double) fader["value"], nullptr);
+    // 0.12.0: FEEL (on by default) is off for a project from before it (none saved), so it plays as it did.
+    if (! state.getChildWithProperty ("id", ParamIDs::deckFeel).isValid())
+        for (const auto& ids : ParamIDs::deckIds)
+        {
+            juce::ValueTree feel ("PARAM");
+            feel.setProperty ("id", ids.feel, nullptr);
+            feel.setProperty ("value", 0.0, nullptr);
+            state.appendChild (feel, nullptr);
+        }
     // MIDI LEARN's links: the project's, if it has any (else the ones this instance has: its default).
     if (auto saved = state.getChildWithName (midiLinksKey); saved.isValid())
     {
