@@ -13534,6 +13534,128 @@ namespace
             } });
         pkAdd (x, upright);
     }
+
+    // THE SCRATCH STYLES (PR7-T 0.12.0, the owner's ask: "presets that give some of the most useful numetal style
+    // scratch styles"): THE DECK set up for one move each, on THE NU RECORD (its cues: 1 the shout, 2 the power-chord
+    // stab, 3 the feedback squeal and zap, 4 the chugs) or THE LIVE RECORD. How the techniques are played is the
+    // library's (and FEEL's); a preset sets the record, the stroke, the speed, the mixer and the effects. Our own
+    // settings from how these moves are generally described, no band or song named; not tuned by ear.
+    void scratchStyles (Expansion x)
+    {
+        const auto keys = juce::String ("DECK KEYS: C1 PLAY, C#1 STOP, D1 BACKSPIN, D#1 HOLD, E1 DROP 1 (the shout), F1 DROP 2 (the stab), "
+                                        "F#1 CUT, G1 DROP 3 (the squeal), G#1 TRANSFORM, A1 DROP 4 (the chugs). SCRATCH KEYS: C2 BABY, "
+                                        "C#2 FORWARD, D2 BACKWARD, D#2 CHIRP, E2 STAB, F2 DRAG, F#2 TEAR, G2 SCRIBBLE, G#2 TRANSFORMER, "
+                                        "A2 FLARE, A#2 2-CLICK FLARE, B2 CRAB.");
+        // The deck on, the record, FEEL with its DIRT, the stroke (turns at full velocity) and the speed (0 half, 1
+        // normal, 2 double), the cartridge (0 CLEAN, 1 SCRATCH, 2 WARM).
+        const auto deck = [] (Builder& b, const char* record, float dirt, float reach, int rate, int cart)
+        {
+            b.rig.deckRecord = juce::String (record);
+            b.set (ParamIDs::deckOn, 1.0f).set (ParamIDs::deckFeel, 1.0f).set (ParamIDs::deckDirt, dirt)
+             .set (ParamIDs::deckScratchReach, reach).set (ParamIDs::deckScratchRate, (float) rate).set (ParamIDs::deckCart, (float) cart)
+             .set (ParamIDs::deckNeedle, 0.15f).set (ParamIDs::deckStart, 0.08f).set (ParamIDs::deckLevel, 4.0f);
+            b.osc (0, "Volume", 0.3f);   // the synth's own keys (C3 up) a quiet saw under the deck, kept out of its way
+        };
+        const auto nu = "{record:nu}", live = "{record:live}";
+        const auto add = [&x] (Builder& b) { x.add (b); };
+
+        auto chirp = x.make ("Chirp Stabs", 1, { "Scratch", "Chirp", "Vocal" },
+            "Short chirps on the shouted vocal, cut on the band's accents: the move you hear most over a nu-metal riff. "
+            "PLAY: E1 (DROP 1) to cue the shout, then D#2 (CHIRP) on the hits; STAB (E2) for a single cut. FEEL on, a "
+            "little DIRT, the SCRATCH cartridge's presence. " + keys);
+        deck (chirp, nu, 0.25f, 0.08f, 1, 1);
+        add (chirp);
+
+        auto transformer = x.make ("Transformer Riff", 2, { "Scratch", "Transformer", "Rhythm" },
+            "The palm-muted chugs chopped by the crossfader in sixteenths, locked to the song: a stutter that rides the "
+            "riff. PLAY: A1 (DROP 4) on the chugs, hold G#1 (TRANSFORM); G#2 (TRANSFORMER) for the hand's own. "
+            "The LOW band lifted for weight. " + keys);
+        deck (transformer, nu, 0.4f, 0.12f, 1, 0);
+        transformer.set (ParamIDs::deckTransform, 1.0f).set (ParamIDs::deckEq[0], 3.0f);
+        add (transformer);
+
+        auto wail = x.make ("Dragged Wail", 3, { "Scratch", "Baby", "Intro" },
+            "Slow, long baby scratches on the vocal at half speed, a moan pulled back and forth: the eerie sound before "
+            "the band comes in. PLAY: E1 (DROP 1), then C2 (BABY) or F2 (DRAG). Into a dark hall. " + keys);
+        deck (wail, nu, 0.1f, 0.35f, 0, 2);
+        reverb (wail, RT::hall, 0.7f, 0.35f, 30.0f, 3.5f);
+        wail.set (ParamIDs::deckSendReverb, 0.5f);
+        add (wail);
+
+        auto flare = x.make ("Flare Cutter", 4, { "Scratch", "Flare", "Stab" },
+            "Two-click flares on the power-chord stab, hard and quick: the crossfader clicking shut twice each way. "
+            "PLAY: F1 (DROP 2), then A#2 (2-CLICK FLARE) or A2 (FLARE). " + keys);
+        deck (flare, nu, 0.5f, 0.12f, 1, 1);
+        flare.set (ParamIDs::deckLevel, 1.5f);
+        add (flare);
+
+        auto crab = x.make ("Crab Burst", 5, { "Scratch", "Crab", "Fill" },
+            "Fast crab rolls at double speed: four fingers tapping the fader open, a burst for the end of a phrase. "
+            "PLAY: E1 (DROP 1) or F1 (DROP 2), then B2 (CRAB). " + keys);
+        deck (crab, nu, 0.3f, 0.06f, 2, 1);
+        add (crab);
+
+        auto scribble = x.make ("Scribble Buzz", 6, { "Scratch", "Scribble", "Noise" },
+            "A tense scribble on the feedback squeal at full DIRT: a buzzing, screaming texture under a breakdown. "
+            "PLAY: G1 (DROP 3), then hold G2 (SCRIBBLE). The lows thinned by the filter. " + keys);
+        deck (scribble, nu, 1.0f, 0.1f, 1, 1);
+        scribble.set (ParamIDs::deckFilter, 0.25f).set (ParamIDs::deckLevel, 0.0f);
+        add (scribble);
+
+        auto tear = x.make ("Tear Drag", 7, { "Scratch", "Tear", "Heavy" },
+            "Tears dragged slowly through the power-chord stab: each push stopped half way, dark and heavy, the LOW band "
+            "up and the top cut. PLAY: F1 (DROP 2), then F#2 (TEAR) or F2 (DRAG). " + keys);
+        deck (tear, nu, 0.55f, 0.25f, 0, 2);
+        tear.set (ParamIDs::deckEq[0], 4.0f).set (ParamIDs::deckEq[2], -10.0f);
+        add (tear);
+
+        auto radio = x.make ("Radio Scratch", 8, { "Scratch", "Lo-Fi", "Vocal" },
+            "The thin, telephone-sounding scratch: lows killed, the top cut, the SCRATCH cartridge and a ringing "
+            "high-pass, driven. PLAY: E1 (DROP 1), then C2 (BABY) and D#2 (CHIRP). " + keys);
+        deck (radio, nu, 0.6f, 0.1f, 1, 1);
+        radio.set (ParamIDs::deckLevel, 2.0f).set (ParamIDs::deckKill[0], 1.0f).set (ParamIDs::deckEq[2], -14.0f).set (ParamIDs::deckFilter, 0.35f)
+             .set (ParamIDs::deckFilterRes, 0.55f);
+        add (radio);
+
+        auto rider = x.make ("Feedback Rider", 9, { "Scratch", "Drag", "Noise" },
+            "The feedback squeal ridden by hand: MOD HAND on, so the mod wheel moves the record; a resonant high-pass "
+            "singing on it. PLAY: G1 (DROP 3), C#1 (STOP) to hold it there, then work the mod wheel; F2 (DRAG) "
+            "for a long pull. " + keys);
+        deck (rider, nu, 0.7f, 0.3f, 1, 1);
+        rider.set (ParamIDs::deckModHand, 1.0f).set (ParamIDs::deckFilter, 0.5f).set (ParamIDs::deckFilterRes, 0.85f);
+        add (rider);
+
+        auto spin = x.make ("Spinback Ender", 10, { "Scratch", "Backspin", "Ending" },
+            "The record thrown back hard to end a section, or braked to a stop like a tape: SPIN five times as fast, "
+            "slowing over a second and a half; BRAKE two and a half seconds. PLAY: A1 (DROP 4) on the chugs, then D1 "
+            "(BACKSPIN) or C#1 (STOP). " + keys);
+        deck (spin, nu, 0.3f, 0.15f, 1, 0);
+        spin.set (ParamIDs::deckSpin, 5.0f).set (ParamIDs::deckSpinTime, 1.5f).set (ParamIDs::deckBrake, 2.5f);
+        add (spin);
+
+        auto drops = x.make ("Needle Drop Hits", 11, { "Scratch", "Drop", "Hits" },
+            "Hits dropped on the riff: each cue on a sound's attack (the shout, the stab, the zap, the open chord), the "
+            "needle landing with its thump and the motor already at speed. PLAY: E1, F1, G1, A1 on the beats; F#1 "
+            "(CUT) to choke one. " + keys);
+        deck (drops, nu, 0.35f, 0.15f, 1, 0);
+        drops.set (ParamIDs::deckNeedle, 0.8f).set (ParamIDs::deckStart, 0.05f).set (ParamIDs::deckLevel, 1.0f)
+             .set (ParamIDs::deckCues[2], (4.0f + 0.72f) / 8.0f).set (ParamIDs::deckCues[3], (6.0f + 0.875f) / 8.0f);
+        add (drops);
+
+        auto cuts = x.make ("Live Synth Cuts", 12, { "Scratch", "Live", "Synth" },
+            "THE LIVE RECORD: play the distorted synth stab (C3 and up), then scratch what you just played: the scratch "
+            "keys land on your newest note, the DROP keys replay your last notes (E1 the newest, F1 the one before). "
+            "PLAY: a stab, then D#2 (CHIRP), A#2 (2-CLICK FLARE) or B2 (CRAB). " + keys);
+        deck (cuts, live, 0.4f, 0.1f, 1, 1);
+        cuts.osc (0, "Wave", saw).osc (0, "Volume", 0.8f)
+            .osc (1, "On", 1.0f).osc (1, "Wave", saw).osc (1, "Transpose", 7.0f).osc (1, "Volume", 0.6f)
+            .osc (2, "On", 1.0f).osc (2, "Wave", saw).osc (2, "Transpose", -12.0f).osc (2, "Volume", 0.6f)
+            .filter (synth::FilterType::lp24, 2200.0f, 0.2f, 0.3f).filterEnvelope (1.0f, 180.0f, 0.3f, 120.0f)
+            .ampEnvelope (1.0f, 300.0f, 0.5f, 140.0f)
+            .shaper (0, synth::ShaperModel::tube, 0.45f, true)
+            .set (ParamIDs::patchLevel, -1.0f).set (ParamIDs::limitOn, 1.0f).set (ParamIDs::limitCeiling, -1.0f);
+        add (cuts);
+    }
 }
 
 std::vector<Rig> makeExpansionRigs()
@@ -13566,5 +13688,6 @@ std::vector<Rig> makeExpansionRigs()
     atomicAge ({ Rig::numBanks + 24, rigs });
     hyperdrive ({ Rig::numBanks + 25, rigs });
     grandCinema ({ Rig::numBanks + 26, rigs });
+    scratchStyles ({ Rig::numBanks + 27, rigs });   // PR7-T 0.12.0
     return rigs;
 }

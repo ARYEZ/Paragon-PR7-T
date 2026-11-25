@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "rigs/ScratchDemos.h"
 
 #include <cstring>
 #include "dsp/synth/Mimic.h"
@@ -285,13 +286,19 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     if (juce::MessageManager::existsAndIsCurrentThread())
         updateWavetables();
     keyboardMidi.ensureSize (2048);
+    onScreenMidi.ensureSize (512);
     for (auto& midi : deckMidi)
         midi.ensureSize (2048);
     deckScratch.setSize (2, 512);   // a piece of processChunk at most (its scratchRight's size)
+    tapeScratch.setSize (2, 512);
+    liveTape.prepare (sampleRate);
     synthMidi.ensureSize (2048);
     keyboardState.reset();
     for (auto& d : decks)
+    {
         d.prepare (sampleRate);
+        d.setLiveTape (&liveTape);
+    }
 
     outputGain.reset (sampleRate, gainRampSeconds);
     expressionGain.reset (sampleRate, 0.03);
@@ -1196,7 +1203,16 @@ void ParagonX1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     // The on-screen keyboard's notes join the DAW's.
     keyboardMidi.clear();
     keyboardMidi.addEvents (midi, 0, numSamples, 0);
-    keyboardState.processNextMidiBuffer (keyboardMidi, 0, numSamples, true);
+    // (0.12.1, PR7-K 1.2.0's fix) The DAW's notes update the keyboard's display; the on-screen keys pressed since the
+    // last block all start at its first sample. JUCE would spread them across the block by the millisecond each was
+    // pressed, so a chord pressed at once could start up to a block apart (and two identical test renders differ,
+    // under load: RACK's off test on Windows CI). (The on-screen presses first: every call, JUCE drops the presses it
+    // hasn't handed on.)
+    onScreenMidi.clear();
+    keyboardState.processNextMidiBuffer (onScreenMidi, 0, numSamples, true);
+    keyboardState.processNextMidiBuffer (keyboardMidi, 0, numSamples, false);
+    for (const auto metadata : onScreenMidi)
+        keyboardMidi.addEvent (metadata.getMessage(), 0);
     if (const auto wheel = pendingModWheel.exchange (-1.0f); wheel >= 0.0f)
         keyboardMidi.addEvent (juce::MidiMessage::controllerEvent (1, 1, juce::roundToInt (wheel * 127.0f)), 0);
     if (const auto pedal = pendingExpression.exchange (-1.0f); pedal >= 0.0f)
@@ -1426,6 +1442,8 @@ deck::Settings ParagonX1AudioProcessor::getDeckSettings (int d) const noexcept
     s.mixer.filter = param (ids.filter);
     s.mixer.resonance = param (ids.filterRes);
     s.wear = param (ids.wear);
+    s.feel = isOn (ids.feel);
+    s.dirt = param (ids.dirt);
     return s;
 }
 
@@ -1463,6 +1481,16 @@ void ParagonX1AudioProcessor::useHouseRecord (int d)
 
 void ParagonX1AudioProcessor::useBuiltInRecord (int which, int d)
 {
+    if (which == 2)
+    {
+        // 0.12.0: THE LIVE RECORD, what the synth just played.
+        auto& side = deckSides[(size_t) d];
+        side.file = liveRecordRef;
+        side.problem = {};
+        if (side.record != deck::liveRecord())
+            setDeckRecord (deck::liveRecord(), d);
+        return;
+    }
     if (which != 1)
     {
         useHouseRecord (d);
@@ -1478,7 +1506,7 @@ void ParagonX1AudioProcessor::useBuiltInRecord (int which, int d)
 int ParagonX1AudioProcessor::getBuiltInRecord (int d) const
 {
     const auto& file = deckSides[(size_t) d].file;
-    return file.isEmpty() ? 0 : file == nuRecordRef ? 1 : -1;
+    return file.isEmpty() ? 0 : file == nuRecordRef ? 1 : file == liveRecordRef ? 2 : -1;
 }
 
 void ParagonX1AudioProcessor::putRecord (const juce::String& ref, int d)
@@ -1487,6 +1515,8 @@ void ParagonX1AudioProcessor::putRecord (const juce::String& ref, int d)
         useHouseRecord (d);
     else if (ref == nuRecordRef)
         useBuiltInRecord (1, d);
+    else if (ref == liveRecordRef)
+        useBuiltInRecord (2, d);
     else if (ref != deckSides[(size_t) d].file || deckSides[(size_t) d].problem.isNotEmpty())
         loadDeckRecord (juce::File (ref), d);
 }
@@ -1770,6 +1800,10 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         for (auto& send : rack->sends)
             send.clear (0, numSamples);
     const auto chunkClock = engine.getSampleClock();   // 0.64.0: PROXIMITY's touches are placed from here
+    // 0.12.0: THE LIVE RECORD's tape keeps what the synth plays while a deck is on.
+    auto anyDeckOn = false;
+    for (const auto& r : deckRouting)
+        anyDeckOn = anyDeckOn || r.on;
     for (int done = 0; done < numSamples; done += (int) std::size (scratchRight))
     {
         const auto n = juce::jmin ((int) std::size (scratchRight), numSamples - done);
@@ -1831,7 +1865,25 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         }
         settings.modulation.ppq = hostPpq >= 0.0 ? hostPpq + (start + done) / getSampleRate() * settings.modulation.bpm / 60.0 : -1.0;
         engine.setStreamer (sfzStreamerForAudio.load(), isNonRealtime());
+        const auto pieceClock = engine.getSampleClock();
         engine.process (left + done, right, n, midi, start + done, settings);
+        if (anyDeckOn)
+        {
+            // THE LIVE RECORD (0.12.0): the synth, every oscillator (the ones going to an insert bus too), before its
+            // effects and before any deck is added, so a deck never scratches its own scratching.
+            auto* tapeL = tapeScratch.getWritePointer (0);
+            auto* tapeR = tapeScratch.getWritePointer (1);
+            juce::FloatVectorOperations::copy (tapeL, left + done, n);
+            juce::FloatVectorOperations::copy (tapeR, right, n);
+            if (sendsReady)
+                for (auto& bus : rack->buses)
+                    if (bus.used)
+                    {
+                        juce::FloatVectorOperations::add (tapeL, bus.buffer.getReadPointer (0, done), n);
+                        juce::FloatVectorOperations::add (tapeR, bus.buffer.getReadPointer (1, done), n);
+                    }
+            liveTape.write (tapeL, tapeR, n, pieceClock);
+        }
         // THE DECK, added to the synth: from here on it goes through everything the synth does (the rack, OUTPUT, the LIMITER).
         for (int d = 0; d < ParamIDs::numDecks; ++d)
         {
@@ -1891,6 +1943,9 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, co
         // PROXIMITY (0.65.0): this piece's touches of playing (notes, arps, the pedal), on their samples.
         std::array<synth::Engine::Touch, synth::Engine::maxTouches> touches;
         const auto count = engine.takeTouches (touches.data(), (int) touches.size());
+        for (int k = 0; k < count; ++k)
+            if (touches[(size_t) k].kind == synth::Engine::Touch::Kind::press)
+                liveTape.addHit (touches[(size_t) k].clock);   // 0.12.0: where THE LIVE RECORD's drops and scratches land
         for (int k = 0; k < count; ++k)
             rack->proximity.addTouch ((int) juce::jlimit<std::int64_t> (0, numSamples - 1, touches[(size_t) k].clock - chunkClock),
                                       touches[(size_t) k].note, touches[(size_t) k].velocity, (effects::Proximity::Kind) touches[(size_t) k].kind);
@@ -3024,6 +3079,15 @@ void ParagonX1AudioProcessor::setStateInformation (const void* data, int sizeInB
     // one deck's fader with 1 its open end: turned round, deck A sounds as it did.
     if (auto fader = state.getChildWithProperty ("id", ParamIDs::deckFader); fader.isValid() && ! state.getChildWithProperty ("id", ParamIDs::deckIds[1].on).isValid())
         fader.setProperty ("value", 1.0 - (double) fader["value"], nullptr);
+    // 0.12.0: FEEL (on by default) is off for a project from before it (none saved), so it plays as it did.
+    if (! state.getChildWithProperty ("id", ParamIDs::deckFeel).isValid())
+        for (const auto& ids : ParamIDs::deckIds)
+        {
+            juce::ValueTree feel ("PARAM");
+            feel.setProperty ("id", ids.feel, nullptr);
+            feel.setProperty ("value", 0.0, nullptr);
+            state.appendChild (feel, nullptr);
+        }
     // MIDI LEARN's links: the project's, if it has any (else the ones this instance has: its default).
     if (auto saved = state.getChildWithName (midiLinksKey); saved.isValid())
     {
@@ -3197,6 +3261,35 @@ bool ParagonX1AudioProcessor::exportArpMidi (int arp, const juce::File& file) co
     out.setPosition (0);
     out.truncate();
     return arpToMidi (arp).writeTo (out);
+}
+
+juce::String ParagonX1AudioProcessor::getDemoMidiPreset() const
+{
+    const auto name = currentRig.factoryName;
+    return name.isNotEmpty() && ! scratchdemos::forPreset (name).empty() ? name : juce::String();
+}
+
+bool ParagonX1AudioProcessor::exportDemoMidi (const juce::File& file) const
+{
+    const auto name = getDemoMidiPreset();
+    if (name.isEmpty())
+        return false;
+    file.getParentDirectory().createDirectory();
+    juce::FileOutputStream out (file);
+    if (! out.openedOk())
+        return false;
+    out.setPosition (0);
+    out.truncate();
+    // At the song's tempo when there is one (only the file's own tempo mark: the notes are in beats either way).
+    return scratchdemos::toMidiFile (name, scratchdemos::forPreset (name), juce::jmax (20.0, hostBpm.load())).writeTo (out);
+}
+
+juce::File ParagonX1AudioProcessor::demoMidiDragFile() const
+{
+    auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                    .getChildFile ("Paragon PR7-T").getChildFile (getDemoMidiPreset() + " (demo).mid");
+    exportDemoMidi (file);
+    return file;
 }
 
 juce::File ParagonX1AudioProcessor::arpMidiDragFile (int arp) const

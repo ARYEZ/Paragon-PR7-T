@@ -2,6 +2,40 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.12.1
+
+- **DEMO MIDI** on the DECK page: while a NU SCHOOL preset is loaded, a DEMO MIDI button beside HIDE RACK holds its demo routine as a MIDI file. Drag it onto a track in your DAW (or click it to save it) and play it back to hear exactly how the demo was made: which keys drop the needle, which scratch keys play, and for how long each is held.
+- The notes are placed in beats, so they sit on your DAW's grid at any tempo (the demo clips were at 95 BPM). The deck's scratches follow the DAW's tempo too, so the notes and the moves always line up.
+- The button only shows for the twelve NU SCHOOL presets; other presets have no demo.
+- **Fixed:** keys pressed on the on-screen keyboard (and the deck page's key buttons) now start at the very start of the next audio block. Before, a chord clicked at once could start its notes up to a block apart. This also fixes a test that failed now and then on Windows (PR7-K's fix from its 1.2.0).
+
+## 0.12.0
+
+**THE LIVE RECORD, FEEL and DIRT, and NU SCHOOL: twelve nu-metal scratch styles, ready to play.**
+
+- **THE LIVE RECORD**, a third built-in record: the deck scratches whatever the synth just played, with nothing
+  loaded or sampled first. PR7-T keeps the last 12 seconds of the synth while a deck is on (the synth itself, before
+  its effects, and never a deck, so a deck can't end up scratching its own scratching). **BUILT IN** now steps THE
+  HOUSE RECORD, THE NU RECORD, THE LIVE RECORD.
+  - The scratch keys land just before the newest note you played (far enough back for a full stroke).
+  - DROP 1 replays from your newest note, DROP 2 from the one before, and so on.
+  - The strip shows those 12 seconds scrolling, NOW at the right edge; the screen says how far behind the synth the
+    needle is. Projects and presets keep it.
+- **FEEL and DIRT** (the rack's SCRATCH page), from PR7-K's SCRATCH effect, the "B" clip you chose:
+  - **FEEL**: a human hand and a hot mixer. Each scratch starts a few milliseconds late and strokes a little longer
+    or shorter, quick through the middle; the sound fades softly as the record slows; the hand's hiss; the mixer
+    channel driven hard before the crossfader, so a cut is still clean silence. It stays about as loud as without it,
+    and LEVEL still sets the deck's volume.
+  - **DIRT** pushes that drive harder, up to four times, with a second fuzz.
+  - FEEL is on for new decks. **Projects and presets saved before 0.12.0 load with it off**, so they sound exactly
+    as before. FEEL shares MOD HAND's place; **HAND** (which deck the wheels move) moved to the ROUTING page.
+- **NU SCHOOL**, a new bank after the expansions: twelve presets, each THE DECK set up for one style. Chirp Stabs,
+  Transformer Riff, Dragged Wail, Flare Cutter, Crab Burst, Scribble Buzz, Tear Drag, Radio Scratch, Feedback Rider,
+  Spinback Ender, Needle Drop Hits, Live Synth Cuts. Each one's notes say which keys to play. They're on THE NU RECORD
+  (Live Synth Cuts on THE LIVE RECORD, with a distorted synth stab to scratch).
+- What's ours to guess: these are our own settings from how the styles are generally described, measured but not
+  heard here. Tell me which way to push any of them.
+
 ## 0.11.0
 
 **THE NU RECORD and SAMPLE: distorted sounds to scratch, built in and made by you.**

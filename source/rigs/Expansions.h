@@ -2,7 +2,8 @@
 
 #include <array>
 
-// The built-in expansions: themed sets of presets (3 leads, 3 pads, 3 basses, 3 keys, 3 arps), each in a bank of
+// The built-in expansions: themed sets of presets (3 leads, 3 pads, 3 basses, 3 keys, 3 arps, 3 plucks; PR7-T's
+// scratch styles are THE DECK's, 12), each in a bank of
 // its own after the user's banks A-E (bank Rig::numBanks + its index here). Only factory presets live there: a
 // preset the user saves is always filed in A-E. Never reorder: a preset's bank is its place in this list (the
 // browser and the slot names read it; saved files never hold an expansion bank).
@@ -15,7 +16,7 @@ namespace expansions
         const char* description;
     };
 
-    inline constexpr std::array<Expansion, 27> list
+    inline constexpr std::array<Expansion, 28> list
     {{
         { "NEON RAIN", "NR",
           "Inspired by the 1982 neo-noir sci-fi film score: CS-80-style brass, rain-soaked pads, smoky leads, glassy "
@@ -142,5 +143,11 @@ namespace expansions
           "swell. Built round BLOOM (0.74.0), the strings ringing along and a hall opening out, and MACRO 3, BLOOM. Every "
           "preset plays the Salamander Grand once it's downloaded (free), and PR7-T's own synthesized piano until then. "
           "Our own sounds." },
+        // PR7-T 0.12.0: not a synth bank: THE DECK set up for one nu-metal scratch style each (12, no categories).
+        { "NU SCHOOL", "NU",
+          "The turntable as nu-metal's DJs played it: chirps and stabs on a shouted vocal, transformers on the riff, "
+          "dragged wails, flares and crab rolls, a screaming scribble, the thin radio scratch, feedback ridden by hand, "
+          "spinbacks and brakes, needle-dropped hits, and your own synth scratched live. Each sets up THE DECK (and FEEL, "
+          "the mixer, the effects) for one move; the notes say which keys to play. Our own settings." },
     }};
 }

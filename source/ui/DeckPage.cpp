@@ -395,7 +395,50 @@ DeckStrip::DeckStrip (ParagonX1AudioProcessor& p, int d) : processor (p), deckIn
 void DeckStrip::timerCallback()
 {
     shownSeconds = processor.getDeck (deckIndex).getPositionSeconds();
+    shownBehind = processor.getDeck (deckIndex).getLiveBehindSeconds();
     repaint();
+}
+
+void DeckStrip::paintLive (juce::Graphics& g, juce::Rectangle<float> area, juce::Rectangle<float> nameArea, const deck::Record& record)
+{
+    // 0.12.0: THE LIVE RECORD: the last 12 seconds the synth played, scrolling left, NOW at the right edge, the needle
+    // where it is behind it (dimmer to its left: what it's already past).
+    const auto& tape = processor.getLiveTape();
+    const auto mid = area.getCentreY();
+    const auto bins = deck::LiveTape::bins;
+    const auto w = area.getWidth() / (float) bins;
+    const auto through = (float) juce::jlimit (0.0, 1.0, 1.0 - shownBehind / deck::LiveTape::seconds);
+    for (int b = 0; b < bins; ++b)
+    {
+        const auto x = area.getX() + (float) b * w;
+        const auto h = juce::jmax (1.0f, tape.getBin (b) * area.getHeight() * 0.48f);
+        const auto colour = tron::at ((float) b / (float) bins);
+        g.setColour (x < area.getX() + through * area.getWidth() ? colour.withAlpha (0.28f) : colour.withAlpha (0.95f));
+        g.fillRect (juce::Rectangle<float> (x, mid - h, juce::jmax (1.0f, w), 2.0f * h));
+    }
+    g.setColour (juce::Colour (0xff070507).withAlpha (0.8f));
+    g.fillRect (nameArea.withWidth (juce::jmin (nameArea.getWidth(), 12.0f + 6.5f * 16.0f)));
+    g.setColour (tron::pink.brighter (0.2f));
+    g.drawText (ParamIDs::deckNames[deckIndex] + "  " + record.name.toUpperCase() + "  (THE SYNTH)", nameArea, juce::Justification::centredLeft, true);
+    const auto x = area.getX() + through * area.getWidth();
+    {
+        juce::Path needle;
+        needle.startNewSubPath (x, area.getY() - 2.0f);
+        needle.lineTo (x, area.getBottom() + 2.0f);
+        const auto colour = tron::at (through);
+        for (const auto& [width, alpha] : { std::pair { 9.0f, 0.08f }, std::pair { 5.0f, 0.18f }, std::pair { 2.4f, 1.0f } })
+        {
+            g.setColour (colour.withAlpha (alpha));
+            g.strokePath (needle, juce::PathStrokeType (width));
+        }
+        g.setColour (juce::Colour (0xfffff0f2));
+        g.strokePath (needle, juce::PathStrokeType (0.9f));
+    }
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    const auto labels = juce::Rectangle<float> (area.getX(), area.getY() - 18.0f, area.getWidth(), 18.0f);
+    g.drawText (juce::String (shownBehind, 2) + " S BEHIND NOW", labels.withTrimmedLeft (labels.getWidth() - 180.0f),
+                juce::Justification::centredRight, false);
 }
 
 void DeckStrip::paint (juce::Graphics& g)
@@ -419,6 +462,12 @@ void DeckStrip::paint (juce::Graphics& g)
     const auto nameArea = juce::Rectangle<float> (area.getX(), area.getBottom() - 6.0f, juce::jmin (260.0f, area.getWidth() * 0.6f), 16.0f);
     if (record == nullptr || record->length <= 0)
         return;
+
+    if (record->live)
+    {
+        paintLive (g, area, nameArea, *record);
+        return;
+    }
 
     // The sound, as a bar a slice (its loudest), dimmer behind the needle.
     const auto mid = area.getCentreY();
@@ -621,6 +670,13 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
                                                                          "(a turn: 1.8 seconds of the record). A softer key: down to 40% of it.");
         make (set.scratchControls, ids.scratchRate, "RATE", deckName + "the techniques at half, normal or double speed (each takes a set number "
                                                                        "of beats at the song's tempo: BABY half a beat, TRANSFORMER two).", true);
+        // FEEL and DIRT (0.12.0): PR7-K's SCRATCH brought to the deck.
+        make (set.scratchControls, ids.feel, "FEEL", deckName + "a human hand and a hot mixer, from PR7-K's SCRATCH: the techniques' strokes quick "
+                                                     "through the middle, each a few ms late and a little longer or shorter; the sound fading "
+                                                     "as the record slows; the hand's hiss; the mixer's channel driven hard (before the "
+                                                     "crossfader, so a cut is silence). Off: the deck exactly as before 0.12.0.");
+        make (set.scratchControls, ids.dirt, "DIRT", deckName + "with FEEL on, how hard the mixer is pushed: 0 SCRATCH's own drive, up to four "
+                                                     "times harder with a second fuzz and more bite.");
         set.scratchKeysMenu = std::make_unique<ParamControl> (state, ids.scratchKeys, "SCRATCH KEYS",
                                                               deckName + "the octave its scratch library's 12 keys start on (a technique a key), or OFF.");
         set.scratchKeysMenu->setCompact (true);
@@ -722,7 +778,9 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     houseKey.setComponentID ("deckHouse");
     houseKey.setTooltip ("A built-in record on the deck the rack shows (our own, synthesized), each press the next: THE HOUSE RECORD "
                          "(an \"ahh\", a horn stab, a drum break, a 1 kHz tone) and THE NU RECORD (a distorted shouted \"AAH!\", a "
-                         "drop-D power-chord stab, a feedback squeal and laser zap, palm-muted chugs). Each sound sits at a cue.");
+                         "drop-D power-chord stab, a feedback squeal and laser zap, palm-muted chugs), each sound at a cue; and THE LIVE "
+                         "RECORD: what the synth just played (the last 12 seconds), to scratch with nothing loaded. On it the scratch "
+                         "keys land on the newest note played, DROP 1 on the newest note, DROP 2 the one before, and so on.");
     sampleKey.setComponentID ("deckSample");
     sampleKey.setTooltip ("SAMPLE: records what PR7-T is playing (the synth, DRIVE and every effect) onto the deck the rack shows, to "
                           "scratch. Press it, play: it starts at the first sound. Press again to stop (30 s at most). Saved as a WAV in "
@@ -753,7 +811,8 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     houseKey.onClick = [this]
     {
         // 0.11.0: each press the next built-in record (a file on the deck: the first).
-        processor.useBuiltInRecord (processor.getBuiltInRecord (selected) == 0 ? 1 : 0, selected);
+        // 0.12.0: THE HOUSE RECORD, THE NU RECORD, THE LIVE RECORD, round again.
+        processor.useBuiltInRecord ((juce::jmax (-1, processor.getBuiltInRecord (selected)) + 1) % 3, selected);
         processor.deckRecordChangedByUser();
         timerCallback();
     };
@@ -818,6 +877,15 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     rackButton.setTooltip ("Hides the rack (the turntables get the page's height) or shows it again.");
     rackButton.onClick = [this] { setRackShown (! rackShown); };
     addAndMakeVisible (rackButton);
+    // 0.12.1: the NU SCHOOL preset's demo routine, to drag onto a track (or click to save).
+    styleButton (demoButton);
+    demoButton.setButtonText ("DEMO MIDI");
+    demoButton.setComponentID ("deckDemoMidi");
+    demoButton.setTooltip ("Drag onto a track in your song: the notes this NU SCHOOL preset's demo played (the deck's keys, the "
+                           "scratch keys, any mod wheel), two bars to see how the style is played. Or click to save it as a file.");
+    demoButton.makeDragFile = [this] { return processor.demoMidiDragFile(); };
+    demoButton.exportTo = [this] (const juce::File& f) { return processor.exportDemoMidi (f); };
+    addChildComponent (demoButton);
 
     for (auto* label : { &speedLabel, &speedLabelB, &keysLabel })
     {
@@ -903,8 +971,9 @@ void DeckPage::showRackPage()
     }
     for (auto& c : faderControls)
         c->setVisible (page == DeckRack::Page::fader);
-    for (auto& c : handControls)
-        c->setVisible (page == DeckRack::Page::scratch);
+    // MOD HAND on SCRATCH; HAND (0.12.0: its cell went to DIRT) on ROUTING.
+    for (size_t i = 0; i < handControls.size(); ++i)
+        handControls[i]->setVisible (page == (i == 0 ? DeckRack::Page::scratch : DeckRack::Page::routing));
 }
 
 void DeckPage::press (deck::Key key, bool down)
@@ -922,6 +991,12 @@ void DeckPage::timerCallback()
     const auto on = isOn (selected);
     for (auto& k : keys)
         k.button->setEnabled (on);   // off, the keys would play the synth
+    // DEMO MIDI (0.12.1): only with a NU SCHOOL preset loaded; the file named after it.
+    {
+        const auto demo = processor.getDemoMidiPreset();
+        demoButton.fileName = demo + " (demo)";
+        demoButton.setVisible (demo.isNotEmpty());
+    }
 
     // Under each turntable: how it's turning.
     for (int d = 0; d < ParamIDs::numDecks; ++d)
@@ -946,7 +1021,8 @@ void DeckPage::timerCallback()
     screen.state = ! on ? juce::String ("OFF")
                  : deck.getScratch() >= 0 ? deck::scratchNames[deck.getScratch()]   // 0.5.0: the technique playing
                  : std::abs (speed) < 0.0005f ? juce::String ("STOPPED") : speed < 0.0f ? juce::String ("BACKWARDS") : juce::String ("PLAYING");
-    screen.line1 = record != nullptr ? juce::String (deck.getPositionSeconds(), 1) + " / " + juce::String (record->seconds(), 1) + " S" : juce::String();
+    screen.line1 = record != nullptr && record->live ? juce::String (deck.getLiveBehindSeconds(), 1) + " S BEHIND THE SYNTH"
+                 : record != nullptr ? juce::String (deck.getPositionSeconds(), 1) + " / " + juce::String (record->seconds(), 1) + " S" : juce::String();
     screen.problem = problem.isNotEmpty();
     screen.line2 = screen.problem ? problem + ": THE HOUSE RECORD MEANWHILE"
                                   : "KEYS FROM " + noteName (settings.firstKey) + (hand ? "  -  PITCH WHEEL: THE HAND" : "  -  HAND: DECK " + ParamIDs::deckNames[1 - selected]);
@@ -1110,9 +1186,18 @@ void DeckPage::resized()
         // The rack's controls in the places it gives (both decks' in the same places: the one shown is visible).
         for (auto& set : sets)
         {
-            for (auto* list : { &set.deckControls, &set.cueControls, &set.scratchControls, &set.routingControls })
+            for (auto* list : { &set.deckControls, &set.cueControls, &set.routingControls })
                 for (int i = 0; i < (int) list->size(); ++i)
                     (*list)[(size_t) i]->setBounds (rack.knobCell (i));
+            // SCRATCH: REACH and RATE; FEEL (0.12.0) under the mixer's MOD HAND (two keys sharing a cell, as the KILLs
+            // do); DIRT. (The page's right half is the techniques' list.)
+            for (int i = 0; i < (int) set.scratchControls.size(); ++i)
+            {
+                auto cell = rack.knobCell (i < 2 ? i : 3);
+                if (i == 2)
+                    cell = rack.knobCell (2).withTrimmedTop (rack.knobCell (2).getHeight() / 2);
+                set.scratchControls[(size_t) i]->setBounds (cell);
+            }
             // MIXER: CART, LOW, MID, HIGH, the KILLs stacked beside them, FILTER, RES, WEAR.
             for (int i = 0; i < (int) set.mixerControls.size(); ++i)
                 set.mixerControls[(size_t) i]->setBounds (rack.knobCell (i < 4 ? i : i + 1));
@@ -1125,9 +1210,13 @@ void DeckPage::resized()
         }
         for (int i = 0; i < (int) faderControls.size(); ++i)
             faderControls[(size_t) i]->setBounds (rack.knobCell (i));
-        // SCRATCH: each deck's REACH and RATE, then the mixer's MOD HAND and HAND.
-        for (int i = 0; i < (int) handControls.size(); ++i)
-            handControls[(size_t) i]->setBounds (rack.knobCell (2 + i));
+        // SCRATCH: each deck's REACH and RATE, the mixer's MOD HAND over FEEL; HAND (0.12.0) on ROUTING, after the
+        // deck's sends and insert (which deck the wheels move).
+        if (handControls.size() >= 2)
+        {
+            handControls[0]->setBounds (rack.knobCell (2).withHeight (rack.knobCell (2).getHeight() / 2));
+            handControls[1]->setBounds (rack.knobCell (3));
+        }
         for (int d = 0; d < ParamIDs::numDecks; ++d)
             deckKeys[(size_t) d].setBounds (rack.deckKeyCell (d));
         loadKey.setBounds (rack.keyCell (1));
@@ -1163,6 +1252,7 @@ void DeckPage::resized()
     // Between them: HIDE / SHOW RACK, the records' strips, the shown deck's keys, the legend, the crossfader.
     auto top = area.removeFromTop (28);
     rackButton.setBounds ((rackShown ? top : juce::Rectangle<int> (getWidth() - 150, 12, 130, 28)).removeFromRight (130));
+    demoButton.setBounds (rackButton.getBounds().translated (-140, 0));
     area.removeFromTop (34);   // (0.9.1: room for the mixer's top edge and its name over the strips)
     const auto keysHeight = 2 * 34 + 6;
     const auto faderHeight = juce::jmin (76, area.getHeight() / 6);

@@ -161,6 +161,23 @@ TEST_CASE ("Each expansion is a bank of its own after E: named, with two-letter 
     {
         const auto rigs = expansionRigs (x);
         INFO (expansions::list[(size_t) x].name);
+        if (juce::String (expansions::list[(size_t) x].name) == "NU SCHOOL")
+        {
+            // PR7-T 0.12.0: THE DECK's scratch styles, not a synth bank: 12, each with the deck on and a record.
+            REQUIRE (rigs.size() == 12);
+            for (size_t i = 0; i < rigs.size(); ++i)
+            {
+                INFO (rigs[i].name);
+                CHECK (rigs[i].number == (int) i + 1);
+                CHECK (rigs[i].getSlotName() == "NU" + juce::String (i + 1).paddedLeft ('0', 2));
+                CHECK (rigs[i].tags.contains ("NU SCHOOL"));
+                CHECK (rigs[i].tags[0] == "Scratch");
+                CHECK (rigs[i].parameters.at (ParamIDs::deckOn) == 1.0f);
+                CHECK (rigs[i].parameters.at (ParamIDs::deckFeel) == 1.0f);
+                CHECK (rigs[i].deckRecord.has_value());
+            }
+            continue;
+        }
         REQUIRE (rigs.size() == 18);
         std::map<juce::String, int> perType;
         for (size_t i = 0; i < rigs.size(); ++i)
@@ -226,13 +243,16 @@ TEST_CASE ("Every expansion preset's settings, routes and macros are real ones",
             CHECK (value >= range.start);   // a choice looked up by a name that isn't there would be -1
             CHECK (value <= range.end);
         }
-        REQUIRE_FALSE (rig.modulation.routes.empty());
+        // (PR7-T's NU SCHOOL: THE DECK's settings, no macros to route.)
+        REQUIRE ((rig.tags.contains ("NU SCHOOL") || ! rig.modulation.routes.empty()));
         for (const auto& r : rig.modulation.routes)
         {
             INFO (r.source << " -> " << r.destination);
             CHECK (synth::mod::sourceFromId (r.source) != synth::mod::Source::none);
             CHECK (ModDestinations::find (r.destination) != nullptr);
         }
+        if (rig.tags.contains ("NU SCHOOL"))
+            continue;   // THE DECK's presets: the keys are the instrument, no macros
         // MACRO 2 is SPACE (0.25.0): it moves REVERB's MIX.
         CHECK (rig.modulation.macroNames[1] == "SPACE");
         CHECK (std::any_of (rig.modulation.routes.begin(), rig.modulation.routes.end(),

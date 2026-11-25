@@ -762,7 +762,7 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
                                   : pageKey == DeckRack::Page::cues ? ParamIDs::deckCues[0] : pageKey == DeckRack::Page::scratch ? ParamIDs::deckScratchReach
                                   : pageKey == DeckRack::Page::mixer ? ParamIDs::deckKill[1] : ParamIDs::deckSendDelay));
         CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : pageKey == DeckRack::Page::cues ? 6
-                                   : pageKey == DeckRack::Page::scratch ? 6 : pageKey == DeckRack::Page::mixer ? 11 : 4));
+                                   : pageKey == DeckRack::Page::scratch ? 7 : pageKey == DeckRack::Page::mixer ? 11 : 5));   // 0.12.0: FEEL, DIRT; HAND on ROUTING
         CHECK_FALSE (shownIds.contains (ParamIDs::deckIds[1].level));   // deck A's shown, not B's
     }
 
@@ -1306,6 +1306,7 @@ namespace
         p.set (ParamIDs::deckOn, 1.0f);
         p.set (ParamIDs::deckStart, 0.05f);
         p.set (ParamIDs::deckNeedle, 0.0f);
+        p.set (ParamIDs::deckFeel, 0.0f);   // 0.12.0: FEEL's drive off, so the tone is clean unless the test drives it
         if (setUp)
             setUp (p);
         return p.play (seconds, noteOn (24 + (int) deck::Key::drop4));
@@ -1818,7 +1819,7 @@ TEST_CASE ("THE NU RECORD on a deck: BUILT IN steps to it, the project and prese
     q.processor.loadRig (RigLibrary::Entry { *Rig::fromXml (*juce::XmlDocument::parse (rig.toXml()->toString())), {}, false });
     CHECK (q.processor.getDeckRecord (0) == deck::nuRecord());
 
-    // The page's BUILT IN key: HOUSE, then NU, then HOUSE again; the screen calls it built in.
+    // The page's BUILT IN key: HOUSE, then NU, then LIVE (0.12.0), then HOUSE again; the screen calls it built in.
     Plugin u;
     DeckPage page (u.processor);
     page.setSize (1476, 672);
@@ -1829,6 +1830,8 @@ TEST_CASE ("THE NU RECORD on a deck: BUILT IN steps to it, the project and prese
     page.refreshForTest();
     CHECK (page.getRack().getScreen().record == "NU RECORD");
     CHECK (page.getRack().getScreen().caption.contains ("BUILT IN"));
+    builtIn->onClick();
+    CHECK (u.processor.getDeckRecord (0) == deck::liveRecord());
     builtIn->onClick();
     CHECK (u.processor.getDeckRecord (0) == deck::houseRecord());
 }

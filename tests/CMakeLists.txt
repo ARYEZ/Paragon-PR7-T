@@ -47,6 +47,9 @@ add_executable(ParagonX1Tests
     CrackleTests.cpp
     CracklePluginTests.cpp
     DeckTests.cpp
+    LiveRecordTests.cpp
+    FeelTests.cpp
+    ScratchStyleTests.cpp
     DownpourTests.cpp
     DownpourPluginTests.cpp
     SiroccoTests.cpp

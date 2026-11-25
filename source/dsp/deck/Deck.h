@@ -3,6 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
 #include "DeckMixer.h"
+#include "LiveTape.h"
 
 #include <array>
 #include <atomic>
@@ -40,6 +41,9 @@ namespace deck
         std::array<float, overviewBins> overview {};
 
         double seconds() const noexcept { return length / sampleRate; }
+        // THE LIVE RECORD (0.12.0): not a sample but a sign that the deck plays its LiveTape (`Deck::setLiveTape`):
+        // no levels, its length the tape's (for the page).
+        bool live = false;
     };
 
     // Makes a record from audio (mono is played on both sides). The filtered copies are built here (a few ms a
@@ -60,6 +64,8 @@ namespace deck
     // through a megaphone's band; a drop-D power chord through a high-gain rig; a feedback squeal rising, then a laser
     // zap; palm-muted chugs at 120 BPM ending on an open chord.
     std::shared_ptr<const Record> nuRecord();
+    // THE LIVE RECORD (0.12.0): the deck plays what the synth just played (its LiveTape); see LiveTape.h.
+    std::shared_ptr<const Record> liveRecord();
     inline constexpr double houseToneStart = 6.0, houseToneSeconds = 1.6, houseToneHz = 1000.0;
 
     // One record's place in seconds, per turn of the platter: the groove's 33 1/3 RPM (60 / 33.333 s).
@@ -126,6 +132,9 @@ namespace deck
         // THE SOUND (0.6.0, stage 6): the cartridge and the mixer channel (DeckMixer), and the record's WEAR.
         MixerSettings mixer;
         float wear = 0.0f;               // 0 to 1: surface hiss and crackle that move with the record, a warp's wobble
+        // FEEL and DIRT (0.12.0, from PR7-K's SCRATCH): see Deck.cpp. Off here (the parameter's default is on).
+        bool feel = false;
+        float dirt = 0.0f;               // 0 to 1: how hard FEEL's mixer drive is pushed
 
         float baseSpeed() const noexcept { return (1.0f + pitch) * (speed45 ? 1.35f : 1.0f); }
     };
@@ -147,6 +156,10 @@ namespace deck
         // The mouse's hand on the platter (the page): while `holding`, the record follows it, `turns` being how far
         // it has been turned since it was grabbed (forward positive). Read at the start of each block.
         void setMouseHand (bool holding, float turns) noexcept { mouseTurns = turns; mouseHolding = holding; }
+        // THE LIVE RECORD's tape, played while the deck's record is `liveRecord()` (the processor's; set once).
+        void setLiveTape (const LiveTape* t) noexcept { tape = t; }
+        // On THE LIVE RECORD: how far behind the newest sound the needle is, in seconds (0 where it can't be read).
+        double getLiveBehindSeconds() const noexcept { return shownBehind.load (std::memory_order_relaxed); }
 
         // Lets go of every held key (HOLD, CUT, TRANSFORM, a technique): their note-offs won't come to the deck (it's
         // off, or its keys moved). Audio thread.
@@ -162,7 +175,7 @@ namespace deck
         float takePeak() noexcept { return peak.exchange (0.0f, std::memory_order_relaxed); }
 
         // For tests: the needle's random crackle the same each run.
-        void seedRandom (std::int64_t seed) noexcept { random.setSeed (seed); wearRandom.setSeed (seed + 1); }
+        void seedRandom (std::int64_t seed) noexcept { random.setSeed (seed); wearRandom.setSeed (seed + 1); handRandom.setSeed (seed + 2); }
 
         // Reads `record`'s side `channel` at `position` (in the sample's own samples) as it sounds moving at
         // `rate` samples of it per output sample (its magnitude: the interpolator's cutoff follows it).
@@ -171,6 +184,9 @@ namespace deck
     private:
         enum class Hand { none, wheel, mouse, scratch, modWheel };
         void handleMidi (const juce::MidiMessage&, const Record*, const Settings&) noexcept;
+        // THE LIVE RECORD: where a needle drop or a technique lands (the key presses kept by the tape).
+        double liveDropPlace (int cue) const noexcept;
+        double liveScratchPlace (double strokeSamples) const noexcept;
         void dropNeedle (double toSamples, float velocity) noexcept;
         void grab (Hand) noexcept;
 
@@ -220,6 +236,30 @@ namespace deck
         // THE SOUND (0.6.0): the mixer channel, and WEAR's surface noise (its hiss a side, a crackle dying away).
         DeckMixer mixer;
         juce::Random wearRandom { 11 };
+
+        // FEEL and DIRT (0.12.0, PR7-K's SCRATCH): the hand's lateness (samples still to wait) before a technique
+        // starts, its randomness, how far FEEL is faded in (0 to 1 over 10 ms: at 0 the deck is exactly as before), and
+        // the mixer's drive a side: the low cut, the DC blocker, the bite, the top; the hand's hiss, and the level under
+        // the needle it follows.
+        struct Biquad
+        {
+            double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0, z1 = 0.0, z2 = 0.0;
+            float run (float x) noexcept
+            {
+                const auto y = b0 * x + z1;
+                z1 = b1 * x - a1 * y + z2;
+                z2 = b2 * x - a2 * y;
+                return (float) y;
+            }
+            void clear() noexcept { z1 = z2 = 0.0; }
+        };
+        juce::Random handRandom { 13 };
+        int scratchDelay = 0;
+        float feelMix = 0.0f;
+        float dirtWas = -1.0f;
+        std::array<Biquad, 2> driveLowCut, driveBite, driveTop, hissLow, hissHigh;
+        std::array<float, 2> dcIn {}, dcOut {}, heard {};
+        void prepareDrive (float dirt) noexcept;
         double hissL = 0.0, hissR = 0.0;
         float crackleNow = 0.0f;
 
@@ -231,5 +271,10 @@ namespace deck
         std::atomic<float> shownFader { 1.0f };
         std::atomic<float> peak { 0.0f };
         std::atomic<int> shownScratch { -1 };
+        std::atomic<double> shownBehind { 0.0 };
+
+        const LiveTape* tape = nullptr;
+        bool wasLive = false;                  // the last block played THE LIVE RECORD
+        double liveLow = 0.0, liveHigh = 0.0;  // this block's readable stretch of the tape
     };
 }

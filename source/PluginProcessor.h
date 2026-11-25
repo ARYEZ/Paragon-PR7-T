@@ -245,6 +245,11 @@ public:
     juce::MidiFile arpToMidi (int arp, juce::Array<int> keys = {}) const;
     bool exportArpMidi (int arp, const juce::File&) const;
     juce::File arpMidiDragFile (int arp) const;   // a file to drag onto a track
+    // 0.12.1: the loaded NU SCHOOL preset's demo routine as MIDI (rigs/ScratchDemos): its name ("" none), saved to a
+    // file, or a file in the temp folder to drag onto a track.
+    juce::String getDemoMidiPreset() const;
+    bool exportDemoMidi (const juce::File&) const;
+    juce::File demoMidiDragFile() const;
     bool importMidiLinks (const juce::File&);
     void controllerForTest (int controller, float value);   // a controller, played through a short block
     // Tests: the synth's random choices (start phases...) the same on every run, for sample-for-sample comparisons.
@@ -372,6 +377,9 @@ public:
     // 0.11.0: the built-in records (0 THE HOUSE RECORD, 1 THE NU RECORD), named in projects and presets as a file is
     // ("": the house record, as before; nuRecordRef: the nu record). putRecord puts any of them, or a file, on a deck.
     static constexpr const char* nuRecordRef = "{record:nu}";
+    static constexpr const char* liveRecordRef = "{record:live}";   // 0.12.0: THE LIVE RECORD (built-in 2)
+    // THE LIVE RECORD's tape: what the synth played (for the page's strip).
+    const deck::LiveTape& getLiveTape() const noexcept { return liveTape; }
     void useBuiltInRecord (int which, int d = 0);
     int getBuiltInRecord (int d = 0) const;   // which is on the deck (-1: a file)
     void putRecord (const juce::String& ref, int d);
@@ -614,6 +622,7 @@ private:
     synth::Engine engine;
     juce::MidiKeyboardState keyboardState;
     juce::MidiBuffer keyboardMidi;   // the DAW's MIDI plus the on-screen keyboard's, per block
+    juce::MidiBuffer onScreenMidi;   // (0.12.1) the on-screen keyboard's, gathered to the block's start
     // THE DECK: the turntable, and its share of the MIDI (its 12 keys and the pitch wheel, taken from the synth's
     // while it's on). Its record handed to the audio thread as the MIMIC recording is: a plain pointer, a replaced
     // one kept 2 s so a block still playing it never reads freed memory.
@@ -621,6 +630,10 @@ private:
     std::array<deck::Deck, ParamIDs::numDecks> decks;
     std::array<juce::MidiBuffer, ParamIDs::numDecks> deckMidi;
     juce::MidiBuffer synthMidi;             // (what's left for the synth, swapped back in)
+    // 0.12.0: THE LIVE RECORD: the last 12 s of what the synth played (written while a deck is on), and a piece of it
+    // before it goes on the tape (the synth's mix and its insert buses' sound).
+    deck::LiveTape liveTape;
+    juce::AudioBuffer<float> tapeScratch;
     juce::AudioBuffer<float> deckScratch;   // 0.7.0: a piece of a deck, before its routing
     struct DeckSide
     {

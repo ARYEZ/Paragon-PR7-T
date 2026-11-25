@@ -28,6 +28,9 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
 8. **Real scratches** (0.8.0, done): the library tuned to measurements of DJs; below.
 9. **The second deck** (0.9.0, done): below.
 10. **Distorted records** (0.11.0, done): THE NU RECORD and SAMPLE; below.
+11. **THE LIVE RECORD** (0.12.0, done): a deck scratching what the synth just played; below.
+12. **FEEL and DIRT** (0.12.0, done): PR7-K's SCRATCH hand and mixer on the deck; below.
+13. **NU SCHOOL** (0.12.0, done): twelve scratch-style presets; below.
 
 ## THE DECK (0.2.0)
 
@@ -180,6 +183,79 @@ What the DJs of nu-metal bands did with theirs, and so what PR7-T is built to do
   BUILT IN key), `[sample]` (armed waits and cancels; from the first sound; stop; on DECK B as a WAV in Records at 0.7,
   1 kHz; no host playing; 30 s full; the rack's key and screen).
 
+## THE LIVE RECORD (0.12.0)
+
+- **The owner's ask** (after PR7-K 1.11.0's SCRATCH, which cuts up what was just played: "can we take the sounds we had
+  with scratch and add them to our playable instrument"; then "make the two clips and add the live record"). The two
+  clips compared PR7-T's deck as it is with SCRATCH's hand and mixer (PR7-K's `effects::Scratch`) on the same routine;
+  the owner chose SCRATCH's ("B sounds better, bring it in"): FEEL and DIRT, below.
+- **`deck::LiveTape`** (`source/dsp/deck/LiveTape.*`, our own design): the last 12 s (`seconds`; the ring rounds up to
+  a power of two) of the synth, stereo, written by `processChunk` after each engine piece **while any deck is on**:
+  the engine's mix plus every used insert bus's raw input, before the effects and **before any deck is added** (a deck
+  never scratches its own scratching; the deck's mixer, routing and the effects then shape it as a record's). Places
+  are the engine's sample clock (`write (..., at)`; a gap or a jump back restarts it without clearing). Its slower
+  copies (1/2, 1/4, 1/8 of the band) are made as it records by the same 127-tap half-band filter as `makeRecord`'s,
+  run as samples arrive, so the slowest is about 9 ms behind: `newest()` is how far a needle may read (about 17 ms
+  behind the newest sound), `oldest()` the far end. `read` is `Deck::read`'s interpolator on the ring (round the
+  ring's end the samples are copied out); tested equal to a record made from the same audio to 1e-5 at any speed.
+  Key presses (`addHit`, from the engine's touches: keys and arps, never a deck's keys) are where it lands. The page's
+  picture: 600 bins of peaks (`getBin`, newest last).
+- **DeckKernel.h**: the interpolator's kernel and the half-band filter, moved out of Deck.cpp unchanged so the tape
+  shares them (`readingFor`, `sum` are the tape's).
+- **On a deck**: `deck::liveRecord()` (a placeholder `Record` with `live` set, no levels, 12 s long for the page) is
+  the third built-in record: `liveRecordRef` "{record:live}", `useBuiltInRecord (2)`, BUILT IN steps HOUSE, NU, LIVE.
+  `Deck::setLiveTape` (the processor's, set in `prepareToPlay`). While it's on, the needle is held between the tape's
+  `oldest` and `newest` (`low` / `high` replace 0 and the length), and put on at the newest sound. **DROP n** lands on
+  the nth newest key press (at least 30 ms old), 4 ms before it (`liveDropPlace`); none: half a second back. **A
+  technique** pressed while no hand has the record and it isn't turning (|speed| < 0.05) first jumps to the newest
+  press far enough back for a full stroke (REACH + 30 ms) and no more than 3 s old, 4 ms before it, as SCRATCH parks
+  its needle (`liveScratchPlace`); none: that far back and a quarter second more. A record playing (a DROP, PLAY) is
+  scratched where it is, as a real one. `getLiveBehindSeconds` for the page.
+- **The page**: the strip on LIVE shows the tape's last 12 s scrolling, NOW at the right, the needle where it is
+  behind ("S BEHIND NOW"), no cue flags (`DeckStrip::paintLive`); the rack's screen "x S BEHIND THE SYNTH".
+  Snapshot: `PARAGON_SNAPSHOT_PAGE=deck PARAGON_SNAPSHOT_DECKLIVE=1` (a played phrase, a CHIRP on its newest note).
+- Tests: `tests/LiveRecordTests.cpp` (`[live]`).
+
+## FEEL and DIRT (0.12.0)
+
+- **The owner's ask:** "B sounds better, bring it in and release together" (B: PR7-K's SCRATCH hand and mixer on the
+  same routine as the deck's own; the sketch is in no file here). Our reading of SCRATCH on the deck, not a copy of its
+  routines: the deck's techniques, cartridge and mixer, changed as SCRATCH's are.
+- **Parameters** (`Parameters.h`, `DeckParameters.cpp`, version hint **50**, per deck: `deckFeel` / `deckDirt`,
+  `deckBFeel` / `deckBDirt`, appended to `DeckIds`): FEEL a switch, **on by default** (the parameter; `deck::Settings::feel`
+  stays false, so a bare deck and its tests are as before); DIRT 0-1. **Migration:** a project without `deckFeel`
+  (from before 0.12.0) gets FEEL off for both decks in `setStateInformation` (a PARAM child added before `replaceState`);
+  a preset holding `deckOn` but no `deckFeel` gets it off in `Rig::fromXml`. Factory presets that don't mention it get
+  the default (on). Tests that measure the clean deck in the plugin set FEEL off (`deckTone` in DeckTests).
+- **The engine** (`Deck.cpp`): `feelMix` fades FEEL in and out over 10 ms; at 0 nothing changes (bit-exact, tested).
+  - The hand: a technique's stroke `h` re-shaped by SCRATCH's `eased (acos (1 - 2h) / pi, 0.45)` (quick through the
+    middle); on its key, up to 5 ms late (`scratchDelay`, the record held, the fader open) and its stroke x 0.85-1.15
+    (`handRandom`, seeded by `seedRandom`).
+  - The cartridge: `sign x min (1, (|speed| / base) / 0.6)^0.6` blended in by `feelMix` (no +6 dB above normal speed).
+  - The mixer, after `DeckMixer`, before the crossfader: LEVEL taken out, a 150 Hz cut, `tanh (w / (3 x 0.2) x drive +
+    bias) - tanh (bias)` (drive 4.5 x 4^DIRT, bias 0.25 + 0.25 DIRT; a second `tanh` fuzz above DIRT 0.5), a 10 Hz DC
+    blocker, a bite (1.8 kHz, +5 + 4 DIRT dB), a 9 kHz top, the hand's hiss (1.2-5 kHz noise x 0.0069 x min (4, |speed|),
+    only while there's sound under the needle), x `driveReference` 0.2 / `driveOutput` (0.79 x 1.401^DIRT, measured on
+    a held tone so the level stays the record's whatever DIRT) x LEVEL. `prepareDrive` remakes the filters when DIRT moves.
+- **The rack**: SCRATCH's right half is the techniques' list, so FEEL shares MOD HAND's cell (two keys, as the KILLs)
+  and DIRT has knobCell 3; **HAND moved to ROUTING** (knobCell 3).
+- Measured: on the A/B routine, PR7-T with FEEL is 16% bright above 3 kHz (B 17%, the old deck 37%), about 2 dB under B.
+- Tests: `tests/FeelTests.cpp` (`[feel]`: off bit-exact; level within 3 dB, the 3rd harmonic strong, DIRT's 5th; LEVEL
+  +6 dB is +6; a cut silent; the soft cartridge at a quarter speed; lateness and stroke spread; defaults and migrations).
+
+## NU SCHOOL (0.12.0)
+
+- **The owner's ask:** "can you build in presets that give some of the most useful numetal style scratch styles?"; the
+  name the owner's. `scratchStyles` in `ExpansionRigs.cpp`, expansion 27 ("NU", NU01-NU12): **12, not 18, and no
+  categories or macros** (the expansion tests check it on its own shape and skip the synth banks' macro rules).
+- Each: THE DECK on, FEEL on, a record (`Rig::deckRecord` "{record:nu}", Live Synth Cuts "{record:live}"), REACH, RATE,
+  CART, DIRT, LEVEL (+4 dB, some evened to -15 to -17 loudness on their routine), the mixer and FX for the style; the
+  synth's own keys a quiet saw (osc 1 at 0.3). Live Synth Cuts: three saws through a tube shaper, the LIMITER at -1 dBFS.
+  Our own settings, no band or song named.
+- **DEMO MIDI** (0.12.1, the owner's ask: "add the midi file drag out option", to see how Flare Cutter's demo was played): `rigs/ScratchDemos.*` (`scratchdemos::forPreset`: each NU SCHOOL preset's routine in beats, the same notes the tests and clips play; `toMidiFile`, 960 ticks a beat, the tempo given). The processor's `getDemoMidiPreset` (the loaded factory preset's name when it has a demo), `exportDemoMidi`, `demoMidiDragFile` (the temp folder's "Paragon PR7-T/<name> (demo).mid", at the host's tempo). The deck page's `MidiExportButton` (ArpPage's: click saves, drag out) beside HIDE RACK, shown only while a demo exists.
+- Tests: `tests/ScratchStyleTests.cpp` (`[nuschool]`: each routine sounds, no NaN, under 0 dBFS; `[.scratchrender]`
+  writes a clip of each, `PARAGON_RENDER` the folder).
+
 ## The project
 
 - An AGPLv3 **JUCE VST3** instrument, a turntable (THE DECK) with PR7-K's synthesizer, in the PR7 family's look, sharing the family's code.
@@ -220,16 +296,12 @@ Each change keeps every sum and its order (only independent work overlapped, or 
   times), after its own DNS failed to find the Ubuntu mirrors (0.6.0 never published). The release job runs whatever
   the builds did (`!cancelled()`) and publishes the platforms that passed, so long as Windows did; the notes say when
   Linux is missing. This session can't re-run CI jobs (403): a push is the way to try again.
-- **A known flaky test** (found on 0.11.0's first Windows CI run, 2026-11-20): "RACK: off, it changes nothing, sample
-  for sample, even with its settings made" (`tests/RackTests.cpp`) compares two plugin instances' output and failed on
-  Windows only (Linux CI and every local run passed). Under valgrind (`--tool=none`, slow) on Linux it fails every time,
-  with no memory errors (memcheck clean): **an instance created while no other one exists** starts its notes a little
-  differently (its first 512 samples louder, its phase shifted, the same level later); instances made while another is
-  alive match each other and the normal runs exactly. A warm-up instance made and destroyed first, or a 3 s sleep before
-  playing, doesn't change it. **It isn't THE DECK's or 0.11.0's**: 0.10.0 (another chat's build, which passed this test
-  on Windows CI) shows exactly the same numbers under valgrind. Root cause not found yet (no timer runs in the tests:
-  TestMain has no message loop). Don't weaken or skip the test; if it fails again, a fresh run (a push) is the retry,
-  and finding why a lone instance differs is the fix.
+- **A flaky test, fixed in 0.12.1** (found on 0.11.0's first Windows CI run, failed again on 0.12.1's first): "RACK:
+  off, it changes nothing, sample for sample, even with its settings made" (`tests/RackTests.cpp`) compares two plugin
+  instances' output. The cause (PR7-K found it in its 1.2.0): JUCE's keyboard state placed on-screen key presses in the
+  block by the millisecond each was pressed, so the two instances could start a note a block apart under load (and
+  always under valgrind). `processBlock` now gathers the on-screen presses into `onScreenMidi` and adds them at sample
+  0. Under valgrind (`--tool=none`) the test now passes; it failed every time there before.
 - **No version tags came over from PR7-K** (they were dropped when the repository was seeded): PR7-T's releases start at `v0.1.0`.
 
 ## How the owner likes to work
