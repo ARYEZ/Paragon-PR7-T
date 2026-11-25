@@ -243,13 +243,16 @@ TEST_CASE ("Every expansion preset's settings, routes and macros are real ones",
             CHECK (value >= range.start);   // a choice looked up by a name that isn't there would be -1
             CHECK (value <= range.end);
         }
-        REQUIRE_FALSE (rig.modulation.routes.empty());
+        // (PR7-T's NU SCHOOL: THE DECK's settings, no macros to route.)
+        REQUIRE ((rig.tags.contains ("NU SCHOOL") || ! rig.modulation.routes.empty()));
         for (const auto& r : rig.modulation.routes)
         {
             INFO (r.source << " -> " << r.destination);
             CHECK (synth::mod::sourceFromId (r.source) != synth::mod::Source::none);
             CHECK (ModDestinations::find (r.destination) != nullptr);
         }
+        if (rig.tags.contains ("NU SCHOOL"))
+            continue;   // THE DECK's presets: the keys are the instrument, no macros
         // MACRO 2 is SPACE (0.25.0): it moves REVERB's MIX.
         CHECK (rig.modulation.macroNames[1] == "SPACE");
         CHECK (std::any_of (rig.modulation.routes.begin(), rig.modulation.routes.end(),

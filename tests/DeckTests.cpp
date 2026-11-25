@@ -762,7 +762,7 @@ TEST_CASE ("THE DECK's rack: every control on it, each page showing its own, lai
                                   : pageKey == DeckRack::Page::cues ? ParamIDs::deckCues[0] : pageKey == DeckRack::Page::scratch ? ParamIDs::deckScratchReach
                                   : pageKey == DeckRack::Page::mixer ? ParamIDs::deckKill[1] : ParamIDs::deckSendDelay));
         CHECK (shownIds.size() == (pageKey == DeckRack::Page::deck ? 9 : pageKey == DeckRack::Page::fader ? 5 : pageKey == DeckRack::Page::cues ? 6
-                                   : pageKey == DeckRack::Page::scratch ? 6 : pageKey == DeckRack::Page::mixer ? 11 : 4));
+                                   : pageKey == DeckRack::Page::scratch ? 7 : pageKey == DeckRack::Page::mixer ? 11 : 5));   // 0.12.0: FEEL, DIRT; HAND on ROUTING
         CHECK_FALSE (shownIds.contains (ParamIDs::deckIds[1].level));   // deck A's shown, not B's
     }
 

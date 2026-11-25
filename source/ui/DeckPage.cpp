@@ -962,8 +962,9 @@ void DeckPage::showRackPage()
     }
     for (auto& c : faderControls)
         c->setVisible (page == DeckRack::Page::fader);
-    for (auto& c : handControls)
-        c->setVisible (page == DeckRack::Page::scratch);
+    // MOD HAND on SCRATCH; HAND (0.12.0: its cell went to DIRT) on ROUTING.
+    for (size_t i = 0; i < handControls.size(); ++i)
+        handControls[i]->setVisible (page == (i == 0 ? DeckRack::Page::scratch : DeckRack::Page::routing));
 }
 
 void DeckPage::press (deck::Key key, bool down)
@@ -1173,9 +1174,15 @@ void DeckPage::resized()
             for (auto* list : { &set.deckControls, &set.cueControls, &set.routingControls })
                 for (int i = 0; i < (int) list->size(); ++i)
                     (*list)[(size_t) i]->setBounds (rack.knobCell (i));
-            // SCRATCH: REACH and RATE, the mixer's MOD HAND and HAND (below), then FEEL and DIRT (0.12.0).
+            // SCRATCH: REACH and RATE; FEEL (0.12.0) under the mixer's MOD HAND (two keys sharing a cell, as the KILLs
+            // do); DIRT. (The page's right half is the techniques' list.)
             for (int i = 0; i < (int) set.scratchControls.size(); ++i)
-                set.scratchControls[(size_t) i]->setBounds (rack.knobCell (i < 2 ? i : i + 2));
+            {
+                auto cell = rack.knobCell (i < 2 ? i : 3);
+                if (i == 2)
+                    cell = rack.knobCell (2).withTrimmedTop (rack.knobCell (2).getHeight() / 2);
+                set.scratchControls[(size_t) i]->setBounds (cell);
+            }
             // MIXER: CART, LOW, MID, HIGH, the KILLs stacked beside them, FILTER, RES, WEAR.
             for (int i = 0; i < (int) set.mixerControls.size(); ++i)
                 set.mixerControls[(size_t) i]->setBounds (rack.knobCell (i < 4 ? i : i + 1));
@@ -1188,9 +1195,13 @@ void DeckPage::resized()
         }
         for (int i = 0; i < (int) faderControls.size(); ++i)
             faderControls[(size_t) i]->setBounds (rack.knobCell (i));
-        // SCRATCH: each deck's REACH and RATE, then the mixer's MOD HAND and HAND.
-        for (int i = 0; i < (int) handControls.size(); ++i)
-            handControls[(size_t) i]->setBounds (rack.knobCell (2 + i));
+        // SCRATCH: each deck's REACH and RATE, the mixer's MOD HAND over FEEL; HAND (0.12.0) on ROUTING, after the
+        // deck's sends and insert (which deck the wheels move).
+        if (handControls.size() >= 2)
+        {
+            handControls[0]->setBounds (rack.knobCell (2).withHeight (rack.knobCell (2).getHeight() / 2));
+            handControls[1]->setBounds (rack.knobCell (3));
+        }
         for (int d = 0; d < ParamIDs::numDecks; ++d)
             deckKeys[(size_t) d].setBounds (rack.deckKeyCell (d));
         loadKey.setBounds (rack.keyCell (1));

@@ -13554,6 +13554,7 @@ namespace
             b.set (ParamIDs::deckOn, 1.0f).set (ParamIDs::deckFeel, 1.0f).set (ParamIDs::deckDirt, dirt)
              .set (ParamIDs::deckScratchReach, reach).set (ParamIDs::deckScratchRate, (float) rate).set (ParamIDs::deckCart, (float) cart)
              .set (ParamIDs::deckNeedle, 0.15f).set (ParamIDs::deckStart, 0.08f).set (ParamIDs::deckLevel, 4.0f);
+            b.osc (0, "Volume", 0.3f);   // the synth's own keys (C3 up) a quiet saw under the deck, kept out of its way
         };
         const auto nu = "{record:nu}", live = "{record:live}";
         const auto add = [&x] (Builder& b) { x.add (b); };
