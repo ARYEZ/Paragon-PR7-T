@@ -881,8 +881,9 @@ DeckPage::DeckPage (ParagonX1AudioProcessor& p)
     styleButton (demoButton);
     demoButton.setButtonText ("DEMO MIDI");
     demoButton.setComponentID ("deckDemoMidi");
-    demoButton.setTooltip ("Drag onto a track in your song: the notes this NU SCHOOL preset's demo played (the deck's keys, the "
-                           "scratch keys, any mod wheel), two bars to see how the style is played. Or click to save it as a file.");
+    demoButton.setTooltip ("Drag onto the track PR7-T is on, with this preset loaded: the notes its demo played (the deck's keys, "
+                           "one note a scratch move, any mod wheel), two bars that play the demo exactly. On another preset the deck "
+                           "is off and the same keys play the synth. Or click to save it as a file.");
     demoButton.makeDragFile = [this] { return processor.demoMidiDragFile(); };
     demoButton.exportTo = [this] (const juce::File& f) { return processor.exportDemoMidi (f); };
     addChildComponent (demoButton);

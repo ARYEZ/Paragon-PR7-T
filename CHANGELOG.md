@@ -2,6 +2,13 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.12.2
+
+- **DEMO MIDI now plays the demo exactly.** The file from the DECK page's DEMO MIDI button, dropped on the track with that NU SCHOOL preset loaded, plays the preset's demo clip sample for sample (a test checks all twelve).
+- **One note per scratch move.** A scratch key held for several moves used to be written as one long note, so the file looked like it held nothing. Now every flare, chirp or crab is its own note, starting where the move starts. The moves sound the same; you can see each one, and move or delete it.
+- **Why the old file couldn't match:** the demo clips were rendered with no song running, so the deck's moves ran at 120 BPM while the notes were laid out at 95. In a DAW at 95 BPM the moves run at 95, so no file could match those clips. The clips are now rendered the way a DAW plays the file: the song at 95 BPM. The moves are a little slower than in the first clips. Set your song faster and the whole routine speeds up with it.
+- **It needs the preset loaded.** The deck's keys scratch only while that preset's deck is on. On PR7-T's starting preset the same notes just play the synth: long notes. The button's tooltip and a marker in the file now say so.
+
 ## 0.12.1
 
 - **DEMO MIDI** on the DECK page: while a NU SCHOOL preset is loaded, a DEMO MIDI button beside HIDE RACK holds its demo routine as a MIDI file. Drag it onto a track in your DAW (or click it to save it) and play it back to hear exactly how the demo was made: which keys drop the needle, which scratch keys play, and for how long each is held.
