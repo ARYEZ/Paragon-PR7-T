@@ -3281,7 +3281,8 @@ bool ParagonX1AudioProcessor::exportDemoMidi (const juce::File& file) const
     out.setPosition (0);
     out.truncate();
     // At the song's tempo when there is one (only the file's own tempo mark: the notes are in beats either way).
-    return scratchdemos::toMidiFile (name, scratchdemos::forPreset (name), juce::jmax (20.0, hostBpm.load())).writeTo (out);
+    const auto rate = deck::scratchRates[juce::jlimit (0, deck::scratchRateNames.size() - 1, juce::roundToInt (param (ParamIDs::deckIds[0].scratchRate)))];
+    return scratchdemos::toMidiFile (name, scratchdemos::forPreset (name, rate), juce::jmax (20.0, hostBpm.load())).writeTo (out);
 }
 
 juce::File ParagonX1AudioProcessor::demoMidiDragFile() const
